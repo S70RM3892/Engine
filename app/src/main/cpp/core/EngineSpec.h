@@ -128,6 +128,7 @@ struct DrivetrainDef {
     std::vector<float> gears{3.6f, 2.1f, 1.45f, 1.1f, 0.87f, 0.72f};
     float finalDrive = 3.9f;
     bool propeller = false;
+    bool hasGearbox = true;   // false: フライホイール (または動輪) 直結
     float propReduction = 1.0f;
     int propBlades = 3;
     float propDiameter = 3.0f;

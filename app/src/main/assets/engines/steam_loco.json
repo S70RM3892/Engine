@@ -33,6 +33,7 @@
     "mufflerVolume": 0.5
   },
   "drivetrain": {
+    "type": "none",
     "gears": [
       1.0
     ],

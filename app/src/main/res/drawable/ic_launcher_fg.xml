@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ピストン+コンロッド+クランクのシルエット -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#3A414D" android:pathData="M36,24h36v44h-36z" />
+    <path android:fillColor="#C9CED6" android:pathData="M40,30h28v16h-28z" />
+    <path android:fillColor="#FFB020" android:pathData="M51,44l6,0l6,28l-6,2z" />
+    <path android:fillColor="#9AA3AF" android:pathData="M54,78m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0" />
+    <path android:fillColor="#FFB020" android:pathData="M60,74m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0" />
+</vector>

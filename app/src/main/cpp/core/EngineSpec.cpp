@@ -452,6 +452,7 @@ bool loadEngineSpec(const JsonValue& J, EngineSpec& s, std::string& err) {
         if (!g.empty()) s.drivetrain.gears = g;
         s.drivetrain.finalDrive = f(D, "finalDrive", 3.9f);
         s.drivetrain.propeller = D.str("type", "gearbox") == "propeller";
+        s.drivetrain.hasGearbox = D.str("type", "gearbox") == "gearbox";
         s.drivetrain.propReduction = f(D, "reduction", 1.0f);
         s.drivetrain.propBlades = static_cast<int>(D.num("blades", 3));
         s.drivetrain.propDiameter = f(D, "diameter", 3.0f);

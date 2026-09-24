@@ -26,8 +26,9 @@
     "tailpipeLength": 0.1
   },
   "drivetrain": {
+    "type": "none",
     "gears": [
-      2.0
+      1.0
     ],
     "finalDrive": 1.0
   }

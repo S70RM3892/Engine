@@ -28,8 +28,9 @@
     "mufflerVolume": 0.4
   },
   "drivetrain": {
+    "type": "none",
     "gears": [
-      3.0
+      1.0
     ],
     "finalDrive": 1.0
   }
