@@ -1,7 +1,7 @@
 name: Release
 
 # シミュレータとゲームの 2 つの APK をビルドして GitHub Release に公開する。
-# 起動: v* タグの push / docs/RELEASE_NOTES.md を変更した push / 手動実行。
+# 起動: v* タグの push / リリースノートかこのワークフローを変更した push / 手動実行。
 # タグ名は app/build.gradle.kts の versionName から決める (v<versionName>)。タグが無ければリリース作成時に作る。
 # 署名: リポジトリ Secrets (SIGNING_KEYSTORE_BASE64 / SIGNING_STORE_PASSWORD / SIGNING_KEY_ALIAS /
 # SIGNING_KEY_PASSWORD) があればその鍵、無ければ Gradle のデバッグ鍵。
@@ -9,7 +9,7 @@ on:
   push:
     tags: ["v*"]
     branches: [main, "claude/**"]
-    paths: ["docs/RELEASE_NOTES.md"]
+    paths: ["docs/RELEASE_NOTES.md", ".github/workflows/release.yml"]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@v3
+        with:
+          # 既定の "tools" パッケージは廃止済みで sdkmanager が失敗するため指定しない
+          packages: platform-tools
       - name: Install SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
       - uses: gradle/actions/setup-gradle@v4

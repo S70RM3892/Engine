@@ -32,6 +32,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@v3
+        with:
+          # 既定の "tools" パッケージは廃止済みで sdkmanager が失敗するため指定しない
+          packages: platform-tools
       - name: Install SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
       - uses: gradle/actions/setup-gradle@v4
