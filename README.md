@@ -3,6 +3,10 @@
 内燃機関・外燃機関・ロータリー・ガスタービン・電動機の **運動機構 / 熱力学 / 物理音響** をリアルタイムに再現する Android アプリ。
 3D モデルは直接触らず、計器盤風の **操作コンソール** だけで運転とカメラを操作する。
 
+![画面構成 (コンソール: Robolectric 描画 / ビューポート: 実機と同じ GLES3 レンダラのヘッドレス描画を合成)](docs/images/app_preview.png)
+
+![表示モード (X-RAY / SECTION / THERMAL / STRESS)](docs/images/render_gallery.png)
+
 - 仕様書: [docs/SPEC.md](docs/SPEC.md)
 - 収録: 43 機種 (直列 1〜8 / V2〜V16 / 水平対向 / 星型 3〜28 気筒 / ヴァンケル 1〜4 ローター / デルティック・Jumo 205 / 蒸気機関 / スターリング / ターボジェット・ファン・シャフト / PMSM・誘導モータ)
 - 機種は `app/src/main/assets/engines/*.json` を追加するだけで増やせる (スキーマは仕様書 §6)
