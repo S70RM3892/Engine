@@ -35,6 +35,7 @@ uniform int uClipOn;
 uniform vec4 uHeat;
 uniform vec3 uEmissive;
 uniform int uXray;
+uniform vec4 uFlash;
 out vec4 fragColor;
 
 const float PI = 3.14159265;
@@ -106,6 +107,7 @@ void main() {
     col += albedo * hemi + envSpec * Fe * 0.9;
     col += uCoat * 0.25 * envColor(R) * (0.04 + 0.96 * pow(1.0 - nov, 5.0));
     col += uEmissive;
+    col += uFlash.rgb * uFlash.a * (0.12 * albedo + 0.05);
     col = aces(col * 0.9);
     col = pow(col, vec3(1.0 / 2.2));
     float alpha = uAlpha;
@@ -148,6 +150,7 @@ void main() {
 inline const char* kBgFS = R"(#version 300 es
 precision mediump float;
 in vec2 vUv;
+uniform vec4 uFlash;
 out vec4 fragColor;
 void main() {
     vec3 top = vec3(0.16, 0.18, 0.21);
@@ -157,7 +160,35 @@ void main() {
     // 薄いグリッド
     vec2 g = abs(fract(vUv * vec2(24.0, 14.0)) - 0.5);
     float grid = (1.0 - smoothstep(0.0, 0.03, min(g.x, g.y))) * 0.025;
-    fragColor = vec4(c * v + grid, 1.0);
+    fragColor = vec4(c * v + grid + uFlash.rgb * uFlash.a * 0.05, 1.0);
+}
+)";
+
+// パーティクル (プリマルチプライド: 加算発光 + α遮蔽の煙を 1 パスで)
+inline const char* kParticleVS = R"(#version 300 es
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec2 aUv;
+layout(location = 2) in vec4 aColor;
+uniform mat4 uViewProj;
+out vec2 vUv;
+out vec4 vColor;
+void main() {
+    vUv = aUv;
+    vColor = aColor;
+    gl_Position = uViewProj * vec4(aPos, 1.0);
+}
+)";
+
+inline const char* kParticleFS = R"(#version 300 es
+precision mediump float;
+in vec2 vUv;
+in vec4 vColor;
+out vec4 fragColor;
+void main() {
+    float r = length(vUv * 2.0 - 1.0);
+    float m = smoothstep(1.0, 0.0, r);
+    m *= m;
+    fragColor = vec4(vColor.rgb * m, vColor.a * m);
 }
 )";
 

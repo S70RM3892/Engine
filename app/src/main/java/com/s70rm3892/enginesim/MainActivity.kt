@@ -20,18 +20,20 @@ import com.s70rm3892.enginesim.ui.TelemetryView
  *  └──────────────────────┴───────────────┘
  */
 class MainActivity : Activity() {
-    private lateinit var glView: EngineGLView
+    private lateinit var viewport: Viewport
     private lateinit var console: ConsoleUIController
     private lateinit var screen: ScreenLayout
+    private lateinit var viewportHost: FrameLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val consoleHost = FrameLayout(this)
-        glView = EngineGLView(this)
+        viewportHost = FrameLayout(this)
+        viewport = Viewport.create(this, viewportHost)
         val telemetry = TelemetryView(this)
-        screen = ScreenLayout(this, glView, telemetry, consoleHost)
+        screen = ScreenLayout(this, viewportHost, telemetry, consoleHost)
         screen.apply(isLandscape())
         setContentView(screen.root)
 
@@ -43,7 +45,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        glView.onResume()
+        viewport.onResume()
         NativeBridge.startAudio()
         console.start()
     }
@@ -51,7 +53,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         console.stop()
         NativeBridge.stopAudio()
-        glView.onPause()
+        viewport.onPause()
         super.onPause()
     }
 

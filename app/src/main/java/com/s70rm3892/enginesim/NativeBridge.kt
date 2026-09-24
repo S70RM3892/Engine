@@ -54,6 +54,16 @@ object NativeBridge : ConsoleBackend {
 
     external override fun getPV(volumeL: FloatArray, pressureBar: FloatArray): Int
 
+    /** Vulkan が使える端末か (インスタンスとグラフィックスキューの有無) */
+    external fun vkSupported(): Boolean
+    external fun vkSurfaceCreated(surface: android.view.Surface): Boolean
+    external fun vkSurfaceDestroyed()
+    external fun backendName(): String
+    /** ゲーム演出の強さ (0 = シミュレータ) */
+    external fun setEffects(level: Float)
+    /** カメラ自動周回 [rad/s] */
+    external fun setAutoOrbit(rate: Float)
+
     external fun surfaceCreated()
     external fun surfaceChanged(width: Int, height: Int)
     external fun drawFrame(dtSec: Float)

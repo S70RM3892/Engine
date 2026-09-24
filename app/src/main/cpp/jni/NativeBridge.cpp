@@ -2,6 +2,7 @@
 // スレッド: UI スレッド (制御/テレメトリ取得), GL スレッド (物理ステップ + 描画), オーディオスレッド (DSP)。
 // UI と GL の共有値は mutex で保護し、オーディオへは AudioFeed の atomic で渡す (ロックフリー)。
 #include <android/log.h>
+#include <android/native_window_jni.h>
 #include <jni.h>
 
 #include <memory>
@@ -40,6 +41,8 @@ struct EngineApp {
     int pvChamber = 0;
     int effectiveMode = 0;
     std::string specName;
+    ANativeWindow* window = nullptr;  // Vulkan サーフェス
+    float effects = 0;
 };
 
 EngineApp* g_app = nullptr;
@@ -190,10 +193,51 @@ JNIEXPORT jint JNICALL Java_com_s70rm3892_enginesim_NativeBridge_getPV(JNIEnv* e
     return n;
 }
 
+JNIEXPORT jboolean JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSupported(JNIEnv*, jobject) {
+    static int cached = -1;
+    if (cached < 0) cached = VkBackend::probe() ? 1 : 0;
+    return cached == 1;
+}
+
+// Vulkan: 描画スレッドから呼ぶ
+JNIEXPORT jboolean JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSurfaceCreated(JNIEnv* env, jobject, jobject surface) {
+    EngineApp& a = app();
+    a.renderer.releaseVulkan();
+    if (a.window) ANativeWindow_release(a.window);
+    a.window = ANativeWindow_fromSurface(env, surface);
+    if (!a.window) return JNI_FALSE;
+    bool ok = a.renderer.initVulkan(a.window);
+    if (!ok) LOGE("Vulkan init failed");
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSurfaceDestroyed(JNIEnv*, jobject) {
+    EngineApp& a = app();
+    a.renderer.releaseVulkan();
+    if (a.window) ANativeWindow_release(a.window);
+    a.window = nullptr;
+}
+
+JNIEXPORT jstring JNICALL Java_com_s70rm3892_enginesim_NativeBridge_backendName(JNIEnv* env, jobject) {
+    return env->NewStringUTF(app().renderer.backendName().c_str());
+}
+
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setEffects(JNIEnv*, jobject, jfloat level) {
+    EngineApp& a = app();
+    std::lock_guard<std::mutex> g(a.m);
+    a.effects = level;
+}
+
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setAutoOrbit(JNIEnv*, jobject, jfloat rate) {
+    EngineApp& a = app();
+    std::lock_guard<std::mutex> g(a.m);
+    a.view.autoOrbit = rate;
+}
+
 JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_surfaceCreated(JNIEnv*, jobject) {
     EngineApp& a = app();
     a.renderer.releaseGL();  // 旧コンテキストの名前は無効
-    if (!a.renderer.initGL()) LOGE("renderer init failed");
+    if (!a.renderer.initGL()) LOGE("GLES renderer init failed");
 }
 
 JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_surfaceChanged(JNIEnv*, jobject, jint w, jint h) {
@@ -205,6 +249,7 @@ JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_drawFrame(JNIEn
     Controls controls;
     ViewInput view;
     int pvChamber;
+    float effects;
     std::unique_ptr<EngineSpec> spec;
     {
         std::lock_guard<std::mutex> g(a.m);
@@ -212,7 +257,9 @@ JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_drawFrame(JNIEn
         controls = a.controls;
         view = a.view;
         pvChamber = a.pvChamber;
+        effects = a.effects;
     }
+    a.renderer.setEffects(effects);
     if (spec) {
         a.sim.init(*spec, &a.feed);
         a.renderer.setEngine(a.sim.spec());

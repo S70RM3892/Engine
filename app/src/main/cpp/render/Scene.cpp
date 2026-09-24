@@ -355,6 +355,25 @@ void buildReciprocating(const EngineSpec& s, Scene& sc) {
             y1 = pd.sMax + crownH + hc;
         }
         roofOf[c] = y1;
+        {
+            // 排気口: ヘッド排気側の外側 (星型/蒸気は軸方向, 対向ピストンは中央の排気ポート)
+            const CrankDef& crx = s.cranks[s.throws[pd.throwIdx].crank];
+            Vec3 base{s.throws[pd.throwIdx].x + pd.xOffset, crx.y, crx.z};
+            Vec3 ax = axisDir(pd.axisDeg), lat = lateralDir(pd.axisDeg);
+            Vec3 pos, dir;
+            if (ch.pistons.size() == 2) { pos = base + ax * (0.5f * (y0 + y1)) + lat * (0.7f * b); dir = lat; }
+            else if (radial || isSteam) { pos = base + ax * (y1 + 0.45f * b); dir = ax; }
+            else { pos = base + ax * (y1 + 0.18f * b) + lat * (0.72f * b); dir = normalize(lat + ax * 0.2f); }
+            sc.exhaustPort.resize(s.chambers.size());
+            sc.exhaustDir.resize(s.chambers.size());
+            sc.exhaustPort[c] = pos;
+            sc.exhaustDir[c] = dir;
+            if (isSteam && c + 1 < s.chambers.size() && s.chambers[c + 1].kind == ChamberKind::SteamCrank) {
+                sc.exhaustPort[c + 1] = pos;
+                sc.exhaustDir[c + 1] = dir;
+            }
+            sc.exhaustScale = 0.35f * b;
+        }
         MeshData liner = meshgen::tubeY(0.5f * b, 0.62f * b, y0, y1, 40);
         if (airCooled) {
             for (float y = y0 + 0.25f * (y1 - y0); y < y1 - 0.02f * b; y += 0.09f * b)
@@ -641,6 +660,15 @@ void buildWankel(const EngineSpec& s, Scene& sc) {
     int n = addNode(sc, sm, mat::forgedSteel(), Bind::Crank, 0);
     sc.nodes[n].stress = StressSrc::Crank;
     sc.crankCenter = {0.5f * (xs + xe), 0, 0};
+    sc.exhaustPort.clear();
+    sc.exhaustDir.clear();
+    for (int r = 0; r < w.rotors; ++r)
+        for (int k = 0; k < 3; ++k) {
+            // ペリフェラル排気ポート (ハウジング側面)
+            sc.exhaustPort.push_back({r * (W * 1.6f), -0.3f * R, (R + e) * 1.3f});
+            sc.exhaustDir.push_back({0, -0.2f, 1});
+        }
+    sc.exhaustScale = 0.3f * R;
     sc.cyl1Center = {0, 0, 0};
     sc.cyl1Axis = {0, 0, 1};
     sc.cyl1Size = 3.0f * R;
@@ -712,6 +740,9 @@ void buildTurbine(const EngineSpec& s, Scene& sc) {
     sc.cyl1Size = 0.6f * L;
     sc.sectionX = 0.5f * L;
     sc.outputAnchor = {0.08f * L, 0, 0};
+    sc.exhaustPort = {{1.02f * L, 0, 0}};
+    sc.exhaustDir = {{1, 0, 0}};
+    sc.exhaustScale = 0.5f * coreR;
     sc.outputSize = R * 2.5f;
     if (t.kind == TurbineKind::Turboshaft) {
         // 前方出力軸 + 減速ギア

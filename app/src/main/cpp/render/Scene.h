@@ -92,6 +92,9 @@ struct Scene {
     Vec3 outputAnchor;
     float outputSize = 0.3f;
     float sectionX = 0.0f;     // 断面プリセットで使う切断位置 (X)
+    // 演出用: 各燃焼室の排気口 (位置と噴出方向)。タービンはノズル 1 個
+    std::vector<Vec3> exhaustPort, exhaustDir;
+    float exhaustScale = 0.05f;  // 炎/煙の基準サイズ [m]
 
     int addMesh(MeshData m) {
         meshes.push_back(std::move(m));
