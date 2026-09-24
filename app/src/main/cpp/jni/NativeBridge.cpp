@@ -9,6 +9,7 @@
 #include <string>
 
 #include "../audio/AudioEngine.h"
+#include "../core/CustomEngine.h"
 #include "../audio/EngineAcousticsDSP.h"
 #include "../render/Renderer.h"
 #include "../sim/EngineSimulation.h"
@@ -104,7 +105,8 @@ JNIEXPORT jstring JNICALL Java_com_s70rm3892_enginesim_NativeBridge_loadEngine(J
 JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setControls(JNIEnv*, jobject, jfloat targetRpm, jfloat throttle,
                                                                              jboolean link, jfloat load, jfloat spark,
                                                                              jboolean ignition, jboolean starter, jint gear,
-                                                                             jfloat timeScale, jlong cutMask, jboolean autoStart) {
+                                                                             jfloat timeScale, jlong cutMask, jboolean autoStart,
+                                                                             jint driveMode, jfloat brake, jfloat grade) {
     EngineApp& a = app();
     std::lock_guard<std::mutex> g(a.m);
     Controls& c = a.controls;
@@ -119,6 +121,21 @@ JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setControls(JNI
     c.timeScale = timeScale;
     c.cylinderCutMask = static_cast<uint64_t>(cutMask);
     c.autoStart = autoStart;
+    c.driveMode = driveMode;
+    c.brake = brake;
+    c.grade = grade;
+}
+
+JNIEXPORT jstring JNICALL Java_com_s70rm3892_enginesim_NativeBridge_buildCustomEngine(JNIEnv* env, jobject, jstring params) {
+    const char* c = env->GetStringUTFChars(params, nullptr);
+    std::string text(c);
+    env->ReleaseStringUTFChars(params, c);
+    JsonValue j;
+    std::string err, json;
+    CustomEngineParams p;
+    if (!parseJson(text, j, err) || !parseCustomParams(j, p, err) || !buildCustomEngineJson(p, json, err))
+        return env->NewStringUTF(("{\"error\":\"" + jsonEscape(err) + "\"}").c_str());
+    return env->NewStringUTF(json.c_str());
 }
 
 JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setView(JNIEnv*, jobject, jint preset, jint serial, jint mode,
@@ -151,13 +168,15 @@ JNIEXPORT jint JNICALL Java_com_s70rm3892_enginesim_NativeBridge_getTelemetry(JN
         t = a.tel;
         mode = a.effectiveMode;
     }
-    float v[40] = {t.rpm, t.targetRpm, t.throttle, t.torqueNm, t.torqueInstNm, t.powerKW, t.bmepBar, t.mapKPa,
+    float v[48] = {t.rpm, t.targetRpm, t.throttle, t.torqueNm, t.torqueInstNm, t.powerKW, t.bmepBar, t.mapKPa,
                    t.boostBar, t.turboRpm, t.egtK, t.coolantK, t.oilK, t.fuelKW, t.brakeKW, t.frictionKW,
                    t.coolantKW, t.exhaustKW, t.efficiency, t.peakPressureBar, t.outputRpm, t.outputTorqueNm,
                    static_cast<float>(t.gear), t.n1, t.n2, t.thrustKN, t.electricalHz, t.currentA,
                    t.slip, t.loadNm, t.limiter ? 1.0f : 0.0f, t.running ? 1.0f : 0.0f, t.thetaDeg,
-                   static_cast<float>(mode)};
-    jsize n = std::min<jsize>(env->GetArrayLength(out), 34);
+                   static_cast<float>(mode), t.speedKmh, static_cast<float>(t.effectiveGear), t.shifting ? 1.0f : 0.0f,
+                   t.lockup ? 1.0f : 0.0f, t.slipRatio, static_cast<float>(t.shiftCount), static_cast<float>(t.afterfireCount),
+                   t.distanceM};
+    jsize n = std::min<jsize>(env->GetArrayLength(out), 42);
     env->SetFloatArrayRegion(out, 0, n, v);
     return n;
 }

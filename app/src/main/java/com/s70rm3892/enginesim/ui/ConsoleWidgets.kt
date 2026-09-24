@@ -386,3 +386,136 @@ class PanelFrame(context: Context, private val title: String) : android.widget.L
 }
 
 fun Float.fmtRpm(): String = "%,d".format(roundToInt())
+
+/**
+ * アクセルペダル。押している間は踏み込み量 (押した位置: 下ほど深い) まで開度が上がり、離すと戻る。
+ * 実車のペダル同様に開閉速度を持たせる (tick で [advance] を呼ぶ)。
+ */
+@SuppressLint("ClickableViewAccessibility")
+class PedalButton(context: Context) : View(context) {
+    var label = "ACCEL"
+    var accent = Pal.GREEN
+    var onChange: ((Float) -> Unit)? = null
+    var pressed = false
+        private set
+    /** 現在の開度 0..1 */
+    var value = 0f
+        private set
+    private var target = 0f
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val txt = textPaint(this, 11f, Pal.TEXT, bold = true)
+    private val r = RectF()
+
+    init { minimumHeight = dp(78f).toInt(); minimumWidth = dp(60f).toInt() }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(getDefaultSize(suggestedMinimumWidth, widthMeasureSpec), resolveSize(suggestedMinimumHeight, heightMeasureSpec))
+    }
+
+    /** 開度を目標へ近づける (踏み込み 3/s, 戻し 5/s) */
+    fun advance(dt: Float) {
+        val rate = if (target > value) 3f else 5f
+        val nv = if (target > value) minOf(target, value + rate * dt) else maxOf(target, value - rate * dt)
+        if (nv != value) { value = nv; onChange?.invoke(value); invalidate() }
+    }
+
+    override fun onDraw(c: Canvas) {
+        r.set(dp(2f), dp(2f), width - dp(2f), height - dp(2f))
+        p.style = Paint.Style.FILL; p.color = Pal.PANEL_HI
+        c.drawRoundRect(r, dp(8f), dp(8f), p)
+        // 踏み込み量バー
+        p.color = accent; p.alpha = 150
+        val fillTop = r.bottom - r.height() * value
+        c.drawRoundRect(r.left, fillTop, r.right, r.bottom, dp(8f), dp(8f), p)
+        p.alpha = 255
+        // 滑り止めの溝
+        p.color = Pal.BORDER; p.strokeWidth = dp(2f)
+        for (i in 1..5) {
+            val y = r.top + r.height() * i / 6f
+            c.drawLine(r.left + dp(10f), y, r.right - dp(10f), y, p)
+        }
+        p.style = Paint.Style.STROKE; p.strokeWidth = dp(1.5f); p.color = if (pressed) accent else Pal.BORDER
+        c.drawRoundRect(r, dp(8f), dp(8f), p)
+        val t = "$label ${(value * 100).toInt()}%"
+        c.drawText(t, (width - txt.measureText(t)) / 2, dp(16f), txt)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                parent?.requestDisallowInterceptTouchEvent(true)
+                pressed = true
+                target = (0.3f + 0.85f * (e.y / height)).coerceIn(0.3f, 1f)
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { pressed = false; target = 0f }
+        }
+        invalidate()
+        return true
+    }
+}
+
+/** − 値 + の数値ステッパ */
+@SuppressLint("ClickableViewAccessibility")
+class NumberStepper(context: Context) : View(context) {
+    var label = ""
+    var min = 0f
+    var max = 100f
+    var step = 1f
+    var format: (Float) -> String = { "%.0f".format(it) }
+    var onChange: ((Float) -> Unit)? = null
+    var value = 0f
+        set(v) { field = v.coerceIn(min, max); invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val lab = textPaint(this, 9f, Pal.DIM)
+    private val txt = textPaint(this, 13f, Pal.TEXT, bold = true, mono = true)
+    private val btn = textPaint(this, 16f, Pal.AMBER, bold = true)
+    private val r = RectF()
+    private var repeatJob: Runnable? = null
+
+    init { minimumHeight = dp(52f).toInt() }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(getDefaultSize(suggestedMinimumWidth, widthMeasureSpec), resolveSize(suggestedMinimumHeight, heightMeasureSpec))
+    }
+
+    override fun onDraw(c: Canvas) {
+        c.drawText(label, dp(4f), dp(11f), lab)
+        val top = dp(15f)
+        val bw = height - top
+        r.set(0f, top, width.toFloat(), height.toFloat())
+        p.color = Pal.PANEL_HI; c.drawRoundRect(r, dp(4f), dp(4f), p)
+        p.color = Pal.BORDER
+        c.drawRect(bw, top, bw + dp(1f), height.toFloat(), p)
+        c.drawRect(width - bw, top, width - bw + dp(1f), height.toFloat(), p)
+        c.drawText("−", bw / 2 - btn.measureText("−") / 2, top + bw * 0.68f, btn)
+        c.drawText("+", width - bw / 2 - btn.measureText("+") / 2, top + bw * 0.68f, btn)
+        val t = format(value)
+        c.drawText(t, width / 2f - txt.measureText(t) / 2, top + bw * 0.68f, txt)
+    }
+
+    private fun bump(dir: Int) {
+        value += dir * step
+        onChange?.invoke(value)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val top = dp(15f)
+        val bw = height - top
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val dir = when { e.x < bw -> -1; e.x > width - bw -> 1; else -> 0 }
+                if (dir != 0) {
+                    bump(dir)
+                    // 長押しで連続変化
+                    val job = object : Runnable {
+                        override fun run() { bump(dir); postDelayed(this, 70) }
+                    }
+                    repeatJob = job
+                    postDelayed(job, 400)
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { repeatJob?.let { removeCallbacks(it) }; repeatJob = null }
+        }
+        return true
+    }
+}

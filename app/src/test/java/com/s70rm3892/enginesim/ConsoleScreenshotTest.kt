@@ -42,7 +42,10 @@ class ConsoleScreenshotTest {
         override fun setControls(
             targetRpm: Float, throttle: Float, throttleLink: Boolean, load: Float, sparkOffsetDeg: Float,
             ignition: Boolean, starter: Boolean, gear: Int, timeScale: Float, cylinderCutMask: Long, autoStart: Boolean,
+            driveMode: Int, brake: Float, grade: Float,
         ) { controlsCalls++; lastTarget = targetRpm }
+
+        override fun buildCustomEngine(paramsJson: String) = loadEngine(paramsJson)
 
         override fun setView(
             preset: Int, presetSerial: Int, mode: Int, yawRate: Float, pitchRate: Float, zoom: Float,
@@ -59,6 +62,7 @@ class ConsoleScreenshotTest {
             out[Tel.BRAKE_KW] = 78.8f; out[Tel.FRICTION_KW] = 12f; out[Tel.COOLANT_KW] = 47f; out[Tel.EXHAUST_KW] = 90f
             out[Tel.EFFICIENCY] = 0.345f; out[Tel.PEAK_BAR] = 64f; out[Tel.OUTPUT_RPM] = 1162f; out[Tel.GEAR] = 3f
             out[Tel.RUNNING] = 1f
+            out[Tel.SPEED_KMH] = 87.4f; out[Tel.EFF_GEAR] = 3f; out[Tel.DISTANCE_M] = 120f
             return Tel.COUNT
         }
 

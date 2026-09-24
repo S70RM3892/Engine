@@ -8,7 +8,11 @@ interface ConsoleBackend {
     fun setControls(
         targetRpm: Float, throttle: Float, throttleLink: Boolean, load: Float, sparkOffsetDeg: Float,
         ignition: Boolean, starter: Boolean, gear: Int, timeScale: Float, cylinderCutMask: Long, autoStart: Boolean,
+        driveMode: Int, brake: Float, grade: Float,
     )
+
+    /** カスタムエンジンのパラメータ JSON からエンジン定義 JSON を生成 (失敗時 {"error":...})。 */
+    fun buildCustomEngine(paramsJson: String): String
 
     fun setView(
         preset: Int, presetSerial: Int, mode: Int, yawRate: Float, pitchRate: Float, zoom: Float,
@@ -34,7 +38,10 @@ object NativeBridge : ConsoleBackend {
     external override fun setControls(
         targetRpm: Float, throttle: Float, throttleLink: Boolean, load: Float, sparkOffsetDeg: Float,
         ignition: Boolean, starter: Boolean, gear: Int, timeScale: Float, cylinderCutMask: Long, autoStart: Boolean,
+        driveMode: Int, brake: Float, grade: Float,
     )
+
+    external override fun buildCustomEngine(paramsJson: String): String
 
     external override fun setView(
         preset: Int, presetSerial: Int, mode: Int, yawRate: Float, pitchRate: Float, zoom: Float,
@@ -91,5 +98,13 @@ object Tel {
     const val RUNNING = 31
     const val THETA = 32
     const val RENDER_MODE = 33
-    const val COUNT = 34
+    const val SPEED_KMH = 34
+    const val EFF_GEAR = 35
+    const val SHIFTING = 36
+    const val LOCKUP = 37
+    const val SLIP_RATIO = 38
+    const val SHIFT_COUNT = 39
+    const val AFTERFIRE_COUNT = 40
+    const val DISTANCE_M = 41
+    const val COUNT = 42
 }

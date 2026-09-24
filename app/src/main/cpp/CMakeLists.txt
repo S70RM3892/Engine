@@ -9,6 +9,7 @@ find_package(oboe REQUIRED CONFIG)
 add_library(enginesim SHARED
     core/Json.cpp
     core/EngineSpec.cpp
+    core/CustomEngine.cpp
     sim/EngineKinematics.cpp
     sim/EngineSimulation.cpp
     audio/EngineAcousticsDSP.cpp

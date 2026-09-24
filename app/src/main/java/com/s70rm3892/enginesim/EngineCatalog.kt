@@ -2,12 +2,14 @@ package com.s70rm3892.enginesim
 
 import android.content.Context
 import org.json.JSONObject
+import java.io.File
 
 /** assets/engines/ のカタログ (プラグイン型: JSON を追加するだけで機種が増える)。 */
 class EngineCatalog(private val context: Context) {
-    data class Entry(val file: String, val id: String, val name: String, val category: String)
+    /** custom = true のときは端末内 (filesDir/custom_engines) のユーザー定義 */
+    data class Entry(val file: String, val id: String, val name: String, val category: String, val custom: Boolean = false)
 
-    val entries: List<Entry> by lazy {
+    private val builtin: List<Entry> by lazy {
         val root = JSONObject(readAsset("engines/index.json"))
         val arr = root.getJSONArray("engines")
         (0 until arr.length()).map {
@@ -16,9 +18,39 @@ class EngineCatalog(private val context: Context) {
         }
     }
 
+    private val customDir: File get() = File(context.filesDir, "custom_engines").apply { mkdirs() }
+
+    /** 組み込み + ユーザー定義 (新しい順) */
+    val entries: List<Entry>
+        get() = builtin + customEntries()
+
+    fun customEntries(): List<Entry> =
+        (customDir.listFiles { f -> f.extension == "json" } ?: emptyArray())
+            .sortedByDescending { it.lastModified() }
+            .mapNotNull { f ->
+                runCatching {
+                    val o = JSONObject(f.readText())
+                    Entry(f.name, o.optString("id", f.nameWithoutExtension), o.optString("name", f.nameWithoutExtension),
+                        o.optString("category", "カスタム (Custom)"), custom = true)
+                }.getOrNull()
+            }
+
     val categories: List<String> get() = entries.map { it.category }.distinct()
 
-    fun json(entry: Entry): String = readAsset("engines/${entry.file}")
+    fun json(entry: Entry): String =
+        if (entry.custom) File(customDir, entry.file).readText() else readAsset("engines/${entry.file}")
+
+    /** ユーザー定義を保存し、そのエントリを返す */
+    fun saveCustom(engineJson: String): Entry {
+        val o = JSONObject(engineJson)
+        val file = "c_${System.currentTimeMillis()}.json"
+        File(customDir, file).writeText(engineJson)
+        return Entry(file, o.optString("id"), o.optString("name"), o.optString("category", "カスタム (Custom)"), custom = true)
+    }
+
+    fun deleteCustom(entry: Entry) {
+        if (entry.custom) File(customDir, entry.file).delete()
+    }
 
     private fun readAsset(path: String): String =
         context.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }

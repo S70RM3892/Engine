@@ -15,6 +15,7 @@ import android.widget.TextView
 import com.s70rm3892.enginesim.ui.ConsoleSlider
 import com.s70rm3892.enginesim.ui.Joystick
 import com.s70rm3892.enginesim.ui.KeyButton
+import com.s70rm3892.enginesim.ui.PedalButton
 import com.s70rm3892.enginesim.ui.Pal
 import com.s70rm3892.enginesim.ui.PanelFrame
 import com.s70rm3892.enginesim.ui.RotaryKnob
@@ -72,6 +73,11 @@ class ConsoleUIController(
     private var sectionOffset = 0f
     private var sectionAxis = 0
     private var runState = RunState.STOPPED
+    private var driveMode = DriveMode.DYNO
+    private var brake = false
+
+    /** 駆動モード: 台上 (ダイナモ) / 車両 MT / 車両 AT */
+    enum class DriveMode(val label: String) { DYNO("台上"), MT("MT"), AT("AT オートマ") }
 
     // --- ウィジェット ---
     private lateinit var engineButton: KeyButton
@@ -86,6 +92,9 @@ class ConsoleUIController(
     private lateinit var ignKey: KeyButton
     private lateinit var linkKey: KeyButton
     private lateinit var cutKnob: RotaryKnob
+    private lateinit var pedal: PedalButton
+    private lateinit var driveSel: SegmentedSelector
+    private lateinit var driveInfo: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val telBuf = FloatArray(Tel.COUNT)
@@ -106,6 +115,7 @@ class ConsoleUIController(
         root.addView(scroll, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         colA.addView(enginePanel(), lp())
+        colA.addView(drivePanel(), lp())
         colA.addView(rpmPanel(), lp())
         colB.addView(ignitionPanel(), lp())
         colB.addView(cameraPanel(), lp())
@@ -133,8 +143,12 @@ class ConsoleUIController(
 
     private fun enginePanel(): View = PanelFrame(activity, "ENGINE SELECT & SPEC").apply {
         engineButton = KeyButton(activity, "エンジン選択 ▾").apply { onRelease = { showEngineDialog() } }
+        val designKey = KeyButton(activity, "n気筒 設計").apply {
+            accent = Pal.CYAN
+            onRelease = { CustomEngineDialog(activity, catalog, backend) { loadEngine(it) }.show() }
+        }
         statusText = label(10f, Pal.GREEN, mono = true).apply { gravity = Gravity.CENTER }
-        addView(row(engineButton, statusText, weights = floatArrayOf(3f, 1f)))
+        addView(row(engineButton, designKey, statusText, weights = floatArrayOf(3f, 1.6f, 1f)))
         specText = label(8.5f, Pal.TEXT, mono = true).apply {
             setPadding(0, activity.dp(2f).toInt(), 0, activity.dp(2f).toInt())
             maxLines = 4
@@ -155,6 +169,77 @@ class ConsoleUIController(
             onToggle = { autoStart = it; pushControls() }
         }
         addView(row(ignKey, startKey, autoKey))
+    }
+
+    private fun drivePanel(): View = PanelFrame(activity, "DRIVE / ACCEL PEDAL").apply {
+        driveSel = SegmentedSelector(activity, DriveMode.entries.map { it.label }).apply {
+            label = "駆動モード"
+            accent = Pal.GREEN
+            onSelect = { setDriveMode(DriveMode.entries[it]) }
+        }
+        addView(driveSel)
+        pedal = PedalButton(activity).apply { label = "アクセル" }
+        val brakeKey = KeyButton(activity, "ブレーキ").apply {
+            accent = Pal.RED
+            onPress = { brake = true; pushControls() }
+            onRelease = { brake = false; pushControls() }
+            minimumHeight = activity.dp(78f).toInt()
+        }
+        driveInfo = label(10f, Pal.TEXT, mono = true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(activity.dp(4f).toInt(), 0, 0, 0) }
+        addView(row(pedal, brakeKey, driveInfo, weights = floatArrayOf(1.4f, 0.9f, 1.3f)))
+    }
+
+    private fun setDriveMode(m: DriveMode) {
+        val s = summary
+        if (m != DriveMode.DYNO && s != null && (s.propeller || s.isTurbine)) {
+            driveSel.selected = DriveMode.DYNO.ordinal
+            driveInfo.text = "この機種は\n車両モード非対応"
+            return
+        }
+        driveMode = m
+        // 車両モードではスロットルはペダル (または手動スライダ) で操作する
+        if (m != DriveMode.DYNO && throttleLink) {
+            throttleLink = false
+            linkKey.on = false
+            throttleSlider.isEnabled = true
+        }
+        refreshGearItems()
+        loadSlider.label = if (m == DriveMode.DYNO) dynoLabel() else "路面勾配 (0〜15%)"
+        loadSlider.format = if (m == DriveMode.DYNO) { v -> "%3.0f %%".format(v * 100) } else { v -> "%.1f %%".format(v * 15) }
+        loadSlider.invalidate()
+        pushControls()
+    }
+
+    private fun dynoLabel(): String {
+        val s = summary ?: return "DYNO LOAD (負荷)"
+        return if (s.propeller) "PROP PITCH (プロペラ吸収)" else "DYNO LOAD (負荷 ${"%.0f".format(s.peakTorque)} Nm 比)"
+    }
+
+    private fun refreshGearItems() {
+        val s = summary ?: return
+        val items = when {
+            s.propeller -> listOf("PROP")
+            driveMode == DriveMode.AT || s.gears <= 1 -> listOf("N", "D")
+            else -> listOf("N") + (1..s.gears).map { "$it" }
+        }
+        gearSel.items = items
+        gear = gear.coerceAtMost(items.size - 1)
+        if (driveMode == DriveMode.AT && gear > 1) gear = 1
+        gearSel.selected = gear
+    }
+
+    private fun updateDriveInfo() {
+        if (driveMode == DriveMode.DYNO) {
+            driveInfo.text = "台上運転\nペダルで空ぶかし"
+            return
+        }
+        val g = telBuf[Tel.EFF_GEAR].toInt()
+        val gs = when {
+            g == 0 -> "N"
+            driveMode == DriveMode.AT -> "D$g" + if (telBuf[Tel.LOCKUP] > 0.5f) " L/U" else ""
+            else -> "$g 速"
+        }
+        driveInfo.text = "%5.1f km/h\n%s%s".format(telBuf[Tel.SPEED_KMH], gs, if (telBuf[Tel.SHIFTING] > 0.5f) " ⇅" else "")
     }
 
     private fun rpmPanel(): View = PanelFrame(activity, "RPM / THROTTLE / LOAD").apply {
@@ -295,14 +380,13 @@ class ConsoleUIController(
         load = 0f
         throttle = 0f
         throttleSlider.value = 0f
-        val gears = when {
-            s.propeller -> listOf("PROP")
-            s.gears <= 1 -> listOf("N", "D")
-            else -> listOf("N") + (1..s.gears).map { "$it" }
-        }
-        gearSel.items = gears
         gear = 0
-        gearSel.selected = 0
+        if ((s.propeller || s.isTurbine) && driveMode != DriveMode.DYNO) {
+            driveMode = DriveMode.DYNO
+            driveSel.selected = 0
+        }
+        refreshGearItems()
+        if (driveMode != DriveMode.DYNO) loadSlider.label = "路面勾配 (0〜15%)"
         cutKnob.max = s.cylinders.coerceAtLeast(1).toFloat()
         cutKnob.value = 0f
         cutCylinder = 0
@@ -336,9 +420,15 @@ class ConsoleUIController(
     private fun pushControls() {
         val cut = if (cutCylinder in 1..63) 1L shl (cutCylinder - 1) else 0L
         val g = if (summary?.propeller == true) 0 else gear
+        // アクセルペダルが踏まれている間はペダル開度が最優先 (ガバナ連動も一時解除)
+        val pedalActive = ::pedal.isInitialized && (pedal.pressed || pedal.value > 0.001f)
+        val vehicle = driveMode != DriveMode.DYNO
+        val thr = if (pedalActive) pedal.value else throttle
+        val link = throttleLink && !pedalActive && !vehicle
         backend.setControls(
-            targetRpm, throttle, throttleLink, load, spark, ignition, starter, g,
+            targetRpm, thr, link, if (vehicle) 0f else load, spark, ignition, starter, g,
             timeScales[timeScaleIdx], cut, autoStart,
+            driveMode.ordinal, if (brake) 1f else 0f, if (vehicle) load else 0f,
         )
     }
 
@@ -351,11 +441,15 @@ class ConsoleUIController(
     private val tick = object : Runnable {
         override fun run() {
             if (!running) return
+            val before = pedal.value
+            pedal.advance(0.033f)
+            if (pedal.value != before || pedal.pressed) pushControls()
             val n = backend.getTelemetry(telBuf)
             if (n >= Tel.COUNT && summary != null) {
                 val pvn = backend.getPV(pvV, pvP)
                 telemetry.update(telBuf, pvV, pvP, pvn)
                 rpmSlider.secondary = telBuf[Tel.RPM]
+                updateDriveInfo()
                 if (throttleLink) throttleSlider.value = telBuf[Tel.THROTTLE]
                 updateRunState()
                 // 断面プリセットで描画モードが自動切替された場合、コンソール側の状態も合わせる

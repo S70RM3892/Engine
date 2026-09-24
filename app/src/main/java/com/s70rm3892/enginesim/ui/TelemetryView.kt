@@ -205,6 +205,7 @@ class TelemetryView(context: Context) : View(context) {
                 rows += "η brake" to "%5.1f %%".format(tel[Tel.EFFICIENCY] * 100)
             }
         }
+        if (tel[Tel.SPEED_KMH] > 0.05f || tel[Tel.DISTANCE_M] > 0.5f) rows += "SPEED" to "%5.1f km/h".format(tel[Tel.SPEED_KMH])
         rows += "THROTTLE" to "%5.1f %%".format(tel[Tel.THROTTLE] * 100)
         val g = tel[Tel.GEAR].toInt()
         rows += (if (s.propeller) "PROP" else "OUT " + (if (g == 0) "N" else "G$g")) to "%,6d rpm".format(tel[Tel.OUTPUT_RPM].toInt())
