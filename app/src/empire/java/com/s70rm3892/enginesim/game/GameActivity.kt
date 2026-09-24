@@ -33,6 +33,7 @@ class GameActivity : Activity() {
             override fun customJson(params: JSONObject): String = NativeBridge.buildCustomEngine(params.toString())
         }
         game = GameController(this, NativeBridge, source, GameController.prefsStore(this))
+        game.onAutoOrbit = { NativeBridge.setAutoOrbit(it) }
         game.buildInto(root, viewportHost)
         setContentView(root)
         hideSystemBars()
@@ -41,8 +42,6 @@ class GameActivity : Activity() {
     override fun onResume() {
         super.onResume()
         NativeBridge.setEffects(1f)
-        NativeBridge.setAutoOrbit(0.12f)
-        NativeBridge.setView(0, (System.nanoTime() and 0x3fffffff).toInt(), 0, 0f, 0f, 1f, 0f, 0, 0)
         viewport.onResume()
         NativeBridge.setVolume(0.9f)
         NativeBridge.startAudio()

@@ -13,9 +13,11 @@
 - **n 気筒設計**: 直列/V/水平対向/星型/対向ピストン/ロータリーを任意の気筒数で生成 (等間隔点火のクランク配置を自動設計)
 - **駆動モード**: 台上 (ダイナモ) / MT / **AT (トルコン + ロックアップ + キックダウン)**、アクセルペダルボタン
 - **描画**: Vulkan (既定) / OpenGL ES 3.0 (自動フォールバック)
-- **ENGINE EMPIRE**: 同じ物理エンジンで動く放置・育成ゲーム (**別アプリ** `com.s70rm3892.engineempire`)。実出力 − 燃料代が収入になり、エンジンごとの回転域・効率・過給特性がそのまま攻略要素になる
+- **ENGINE EMPIRE**: 同じ物理エンジンで動く放置・育成ゲーム (**別アプリ** `com.s70rm3892.engineempire`)。実出力 − 燃料代が収入になり、エンジンごとの回転域・効率・過給特性がそのまま攻略要素になる。43 機種すべてをスキルツリーから好きな順に解放でき、X 線・断面・温度・応力表示とスローモーションで中身も見られる
 
-![ENGINE EMPIRE の HUD (Robolectric 描画)](docs/images/game_hud.png)
+![ENGINE EMPIRE の HUD (Robolectric 描画、「内部を見る」パネルを開いた状態)](docs/images/game_hud.png)
+
+![ENGINE EMPIRE のエンジンツリー (全 44 機種・11 系統、解放順は自由)](docs/images/game_tree.png)
 
 ## ビルド
 
@@ -45,8 +47,8 @@ GitHub Actions (`.github/workflows/android.yml`) でも APK が成果物とし�
 cmake -S tests -B tests/build -G Ninja && cmake --build tests/build && ./tests/build/host_tests
 ./tests/build/host_tests --wav            # 各機種の音を WAV 出力 (出力先はソース内のパス)
 
-# ゲーム経済のバランス確認 (全エンジンを自動ダイナモで定常運転)
-./tests/build/game_balance
+# ゲーム経済のバランス確認 (自動ダイナモで定常運転)
+./tests/build/game_balance                                # ツリーの全 44 機種
 ./tests/build/game_balance app/build/game_tuned/*.json   # GameTest が書き出す全強化機
 
 # 実機と同じレンダラを Mesa で描画してスクリーンショット (Vulkan=lavapipe+検証レイヤ / GLES=EGL サーフェスレス)

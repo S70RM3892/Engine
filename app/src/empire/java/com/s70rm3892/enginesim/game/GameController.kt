@@ -104,6 +104,30 @@ class GameController(
     private var tab = Tab.TUNE
     private val rows = ArrayList<Pair<ShopRow, () -> Unit>>()   // 行と、その表示更新処理
 
+    // エンジンツリー (オーバーレイ)
+    private lateinit var treeOverlay: LinearLayout
+    private lateinit var tree: TechTreeView
+    private lateinit var treeInfo: TextView
+    private lateinit var treeAction: KeyButton
+    private var treeSel: GameEngineDef? = null
+    private val descCache = HashMap<String, String>()
+
+    // 内部表示 (描画モード / 視点 / スロー / 周回)
+    private lateinit var viewBar: LinearLayout
+    private lateinit var insideKey: KeyButton
+    private lateinit var modeSel: SegmentedSelector
+    private lateinit var presetSel: SegmentedSelector
+    private lateinit var slowKey: KeyButton
+    private lateinit var orbitKey: KeyButton
+    private var viewMode = 0
+    private var viewPreset = 0
+    private var viewSerial = 1
+    private var slow = false
+    private var orbit = true
+
+    /** カメラ自動周回の設定先 (GameActivity が NativeBridge.setAutoOrbit を渡す) */
+    var onAutoOrbit: ((Float) -> Unit)? = null
+
     // ---------------------------------------------------------------- UI 構築
 
     fun buildInto(root: FrameLayout, viewportHost: FrameLayout) {
@@ -124,10 +148,58 @@ class GameController(
             onPress = { shiftUp() }
             visibility = View.GONE
         }
-        controls.addView(pedal, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(150f).toInt()))
+        controls.addView(pedal, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(120f).toInt()))
         controls.addView(shiftKey, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(96f).toInt()).apply { marginStart = ctx.dp(10f).toInt() })
         stage.addView(controls, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.START).apply { setMargins(ctx.dp(12f).toInt(), 0, 0, ctx.dp(12f).toInt()) })
+
+        // 上部: 内部を見る (描画モード・視点・スロー・周回)。「内部」ボタンで開閉
+        insideKey = KeyButton(ctx, "内部を見る", toggle = true).apply {
+            accent = Pal.CYAN
+            onToggle = { on -> showInside(on) }
+        }
+        stage.addView(insideKey, FrameLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(34f).toInt(), Gravity.TOP or Gravity.START)
+            .apply { setMargins(ctx.dp(12f).toInt(), ctx.dp(100f).toInt(), 0, 0) })
+        viewBar = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.argb(170, 12, 14, 17))
+            val pd = ctx.dp(4f).toInt()
+            setPadding(pd, pd, pd, pd)
+            visibility = View.GONE
+        }
+        modeSel = SegmentedSelector(ctx, listOf("外観", "透視", "断面", "温度", "応力")).apply {
+            accent = Pal.CYAN
+            onSelect = { i -> viewMode = i; pushView() }
+        }
+        presetSel = SegmentedSelector(ctx, listOf("全体", "断面", "クランク", "バルブ", "出力軸")).apply {
+            onSelect = { i ->
+                viewPreset = i
+                viewSerial++
+                if (i == 1) { viewMode = 2; modeSel.selected = 2 }   // 断面視点は断面表示に
+                pushView()
+            }
+        }
+        slowKey = KeyButton(ctx, "スロー ×1/16", toggle = true).apply {
+            onToggle = {
+                slow = it
+                if (it) hud.floatText("映像だけスロー (収入・音は実時間)", Pal.CYAN)
+            }
+        }
+        orbitKey = KeyButton(ctx, "自動周回", toggle = true).apply {
+            on = true
+            onToggle = { orbit = it; onAutoOrbit?.invoke(if (it) 0.12f else 0f) }
+        }
+        val keys = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        keys.addView(slowKey, LinearLayout.LayoutParams(0, ctx.dp(34f).toInt(), 1f))
+        keys.addView(orbitKey, LinearLayout.LayoutParams(0, ctx.dp(34f).toInt(), 1f))
+        keys.addView(KeyButton(ctx, "閉じる").apply { onRelease = { showInside(false) } },
+            LinearLayout.LayoutParams(ctx.dp(64f).toInt(), ctx.dp(34f).toInt()))
+        viewBar.addView(modeSel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(38f).toInt()))
+        viewBar.addView(presetSel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(38f).toInt()))
+        viewBar.addView(keys)
+        // 開いている間はトグルボタンと同じ位置を置き換える
+        stage.addView(viewBar, FrameLayout.LayoutParams(ctx.dp(320f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START)
+            .apply { setMargins(ctx.dp(12f).toInt(), ctx.dp(100f).toInt(), 0, 0) })
 
         // 右: ショップパネル
         val panel = LinearLayout(ctx).apply {
@@ -144,6 +216,8 @@ class GameController(
         }
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(header, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        top.addView(KeyButton(ctx, "エンジンツリー").apply { accent = Pal.GREEN; onRelease = { openTree() } },
+            LinearLayout.LayoutParams(ctx.dp(116f).toInt(), ctx.dp(34f).toInt()))
         panel.addView(top)
         tabs = SegmentedSelector(ctx, Tab.entries.map { it.label }).apply {
             onSelect = { i -> tab = Tab.entries[i]; rebuildList() }
@@ -155,7 +229,117 @@ class GameController(
         panel.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         row.addView(panel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 36f))
         root.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        buildTreeOverlay(root)
         rebuildList()
+    }
+
+    // ---------------------------------------------------------------- エンジンツリー
+
+    private fun buildTreeOverlay(root: FrameLayout) {
+        val ctx = activity
+        treeOverlay = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.rgb(8, 10, 13))
+            visibility = View.GONE
+            isClickable = true
+        }
+        val head = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val pd = ctx.dp(4f).toInt()
+            setPadding(pd * 2, pd, pd, pd)
+        }
+        head.addView(TextView(ctx).apply {
+            text = "エンジンツリー  (ドラッグで移動 / 親のどれか 1 台で解放可)"
+            setTextColor(Pal.TEXT)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            maxLines = 1
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(KeyButton(ctx, "閉じる ✕").apply { onRelease = { closeTree() } },
+            LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(30f).toInt()))
+        treeOverlay.addView(head)
+        tree = TechTreeView(ctx).apply {
+            state = this@GameController.state
+            onSelect = { d -> selectTreeNode(d) }
+        }
+        treeOverlay.addView(tree, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val detail = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Pal.PANEL)
+            val pd = ctx.dp(8f).toInt()
+            setPadding(pd, pd, pd, pd)
+        }
+        treeInfo = TextView(ctx).apply {
+            setTextColor(Pal.TEXT)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            maxLines = 3
+        }
+        treeAction = KeyButton(ctx, "解放").apply { accent = Pal.AMBER; onRelease = { treeActionPressed() } }
+        detail.addView(treeInfo, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        detail.addView(treeAction, LinearLayout.LayoutParams(ctx.dp(140f).toInt(), ctx.dp(48f).toInt()))
+        treeOverlay.addView(detail, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(66f).toInt()))
+        root.addView(treeOverlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    fun openTree() {
+        if (race != RaceState.NONE) return
+        treeOverlay.visibility = View.VISIBLE
+        tree.currentKey = def.key
+        selectTreeNode(treeSel ?: def)
+        tree.centerOn((treeSel ?: def).key)
+    }
+
+    private fun closeTree() {
+        treeOverlay.visibility = View.GONE
+    }
+
+    private fun description(d: GameEngineDef): String = descCache.getOrPut(d.key) {
+        when {
+            d.catalogId != null -> runCatching { JSONObject(engineSource.catalogJson(d.catalogId)).optString("description") }.getOrDefault("")
+            else -> "すべてはここから。気筒追加で 12 気筒まで育つ単気筒。"
+        }
+    }
+
+    private fun selectTreeNode(d: GameEngineDef) {
+        treeSel = d
+        tree.selectedKey = d.key
+        refreshTreeDetail()
+    }
+
+    private fun refreshTreeDetail() {
+        val d = treeSel ?: return
+        val st = tree.nodeState(d)
+        val parents = d.parents.joinToString(" / ") { GameRoster.byKey(it).name }
+        val req = if (d.parents.isEmpty()) "" else "  必要: $parents のどれか"
+        treeInfo.text = "${d.name}  [${GameRoster.lanes[d.lane]}]  目安 +${fmtMoney(d.estNet)}/s$req\n${description(d)}"
+        when {
+            d.key == def.key -> { treeAction.text = "稼働中"; treeAction.accent = Pal.DIM }
+            st == TechTreeView.NodeState.OWNED -> { treeAction.text = "乗り換える"; treeAction.accent = Pal.GREEN }
+            st == TechTreeView.NodeState.AVAILABLE ->
+                { treeAction.text = "解放 ¥" + fmtMoney(d.price); treeAction.accent = if (state.money >= d.price) Pal.AMBER else Pal.DIM }
+            else -> { treeAction.text = "🔒 未解放"; treeAction.accent = Pal.DIM }
+        }
+        treeAction.invalidate()
+    }
+
+    private fun treeActionPressed() {
+        val d = treeSel ?: return
+        when {
+            d.key == def.key -> {}
+            d.key in state.unlocked -> { switchEngine(d); closeTree() }
+            state.unlock(d) -> {
+                hud.popup("NEW ENGINE!", Pal.AMBER)
+                hud.burstConfetti(220)
+                hud.flash(Pal.AMBER)
+                switchEngine(d)
+                tree.currentKey = d.key
+                save()
+            }
+            state.canUnlock(d) -> hud.floatText("資金不足", Pal.RED)
+        }
+        refreshTreeDetail()
+        tree.invalidate()
     }
 
     private fun rowLp() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, activity.dp(58f).toInt()).apply {
@@ -193,7 +377,7 @@ class GameController(
     }
 
     private fun buildTune() {
-        list.addView(note("${def.name}\n${def.flavor}", Pal.TEXT))
+        list.addView(note("${def.name}\n${description(def)}", Pal.TEXT))
         val prog = state.prog(def.key)
         for (u in UpgradeKind.entries) {
             if (!upgradeApplies(def, family, u)) continue
@@ -213,31 +397,26 @@ class GameController(
     }
 
     private fun buildGarage() {
-        val roster = GameRoster.engines
-        val firstLocked = roster.indexOfFirst { it.key !in state.unlocked }.let { if (it < 0) roster.size else it }
-        roster.forEachIndexed { i, d ->
-            if (i > firstLocked + 1) return@forEachIndexed   // 2 つ先以降はシルエットも見せない
-            val hidden = i == firstLocked + 1
+        addRow({
+            val avail = GameRoster.engines.count { state.canUnlock(it) }
+            val afford = GameRoster.engines.count { state.canUnlock(it) && state.money >= it.price }
+            title = "エンジンツリーを開く"
+            subtitle = "解放可能 $avail 台 (うち購入可 $afford 台) / 所持 ${state.unlocked.size}/${GameRoster.engines.size}"
+            price = "▶"
+            affordable = afford > 0
+            accent = Pal.GREEN
+        }) { openTree() }
+        list.addView(note("所持エンジン (タップで乗り換え)。1 台ごとに全収入 +10%"))
+        for (d in GameRoster.engines.filter { it.key in state.unlocked }.sortedBy { it.estNet }) {
             addRow({
-                val owned = d.key in state.unlocked
-                title = if (hidden) "??? (次の目標)" else d.name
-                subtitle = if (hidden) "¥${fmtMoney(d.price)} で解放" else d.flavor
+                title = d.name
+                subtitle = "[${GameRoster.lanes[d.lane]}]  目安 +${fmtMoney(d.estNet)}/s"
                 current = d.key == def.key
-                locked = !owned
-                price = when {
-                    current -> "稼働中"
-                    owned -> "乗り換え"
-                    else -> "¥" + fmtMoney(d.price)
-                }
-                affordable = !hidden && (owned && !current || !owned && state.money >= d.price)
-                accent = if (owned) Pal.GREEN else Pal.AMBER
-            }) {
-                if (hidden) return@addRow
-                if (d.key in state.unlocked) switchEngine(d)
-                else if (state.money >= d.price) unlockEngine(d, this)
-            }
+                price = if (current) "稼働中" else "乗り換え"
+                affordable = !current
+                accent = Pal.GREEN
+            }) { if (d.key != def.key) switchEngine(d) }
         }
-        list.addView(note("解放したエンジン 1 台ごとに全収入 +25% (コレクション・ボーナス)"))
     }
 
     private fun buildResearch() {
@@ -315,16 +494,6 @@ class GameController(
         }
         scheduleReload()
         refreshRows()
-    }
-
-    private fun unlockEngine(d: GameEngineDef, row: ShopRow) {
-        state.money -= d.price
-        state.unlocked += d.key
-        row.celebrate()
-        hud.popup("NEW ENGINE!", Pal.AMBER)
-        hud.burstConfetti(220)
-        hud.flash(Pal.AMBER)
-        switchEngine(d)
     }
 
     private fun switchEngine(d: GameEngineDef) {
@@ -517,11 +686,11 @@ class GameController(
             if (racing) thr = if (race == RaceState.DONE) 0.0 else pedalThr
             // 自動ダイナモ負荷: 回転の上昇とともに吸収トルクが増え、スイートゾーン付近で釣り合う
             val lo = if (s.isElectric) 0.0 else idle
-            val x = ((rpm - lo) / max(1.0, 0.9 * red - lo)).coerceIn(0.0, 1.5)
-            val load = (x.pow(1.6) * 0.9).coerceIn(0.0, 1.3).toFloat()
+            val x = ((rpm - lo) / max(1.0, 0.9 * red - lo)).coerceIn(0.0, 2.0)
+            val load = dynoLoad(x).toFloat()
             backend.setControls(
                 0f, if (cut) 0f else thr.toFloat(), false, if (racing) 0f else load, 0f, !cut, false,
-                if (racing) raceGear else 1, 1f, 0L, true,
+                if (racing) raceGear else 1, if (slow) 1f / 16 else 1f, 0L, true,
                 if (racing) (if (raceMt) 1 else 2) else 0, if (race == RaceState.COUNTDOWN || race == RaceState.DONE) 1f else 0f, 0f,
             )
             if (racing) updateRace(dt) else economy(dt, s, thr, pedalThr, autoThr)
@@ -541,7 +710,12 @@ class GameController(
         hud.overheat = overheat.toFloat()
         hud.advance(dt.toFloat())
         floatTimer += dt
-        if (floatTimer > 0.25) { floatTimer = 0.0; refreshRows() }
+        if (floatTimer > 0.25) {
+            floatTimer = 0.0
+            refreshRows()
+            if (treeOverlay.visibility == View.VISIBLE) refreshTreeDetail()
+        }
+        if (treeOverlay.visibility == View.VISIBLE) tree.advance(dt.toFloat())
         saveTimer += dt
         if (saveTimer > 10) { saveTimer = 0.0; save() }
     }
@@ -552,8 +726,18 @@ class GameController(
         val frac = rpm / red
         val outKw = if (s.isTurbine) tel[Tel.POWER_KW] + tel[Tel.THRUST_KN] * GameRules.THRUST_SPEED
         else tel[Tel.LOAD_NM] * rpm * 2 * PI / 60 / 1000
-        val fuelKw = tel[Tel.FUEL_KW].toDouble()
-        val price = if (s.isElectric) GameRules.ELECTRIC_PRICE else GameRules.FUEL_PRICE
+        // 外燃機関はボイラー/ヒーターの熱量をモデルが報告しないので効率から逆算する
+        // (蒸気: 石炭は安いが効率 10%、スターリング: 熱源は廃熱・太陽熱とみなし無料)
+        val fuelKw = when (cycle) {
+            "steam" -> outKw / 0.10
+            "stirling" -> 0.0
+            else -> tel[Tel.FUEL_KW].toDouble()
+        }
+        val price = when {
+            s.isElectric -> GameRules.ELECTRIC_PRICE
+            cycle == "steam" -> GameRules.COAL_PRICE
+            else -> GameRules.FUEL_PRICE
+        }
 
         // コンボ: スイートゾーンで溜まり、外れると減衰、リミッターで消える
         val limiter = tel[Tel.LIMITER] > 0.5f
@@ -619,7 +803,30 @@ class GameController(
 
     // ---------------------------------------------------------------- ライフサイクル
 
+    /** 内部表示パネルの開閉 */
+    fun showInside(on: Boolean) {
+        insideKey.on = on
+        insideKey.visibility = if (on) View.GONE else View.VISIBLE
+        viewBar.visibility = if (on) View.VISIBLE else View.GONE
+        hud.compact = on   // エンジンを見やすいよう計器を 1 行表示にする
+    }
+
+    /** 描画モード (0 外観 1 透視 2 断面 3 温度 4 応力) */
+    fun setViewMode(mode: Int) {
+        viewMode = mode
+        modeSel.selected = mode
+        pushView()
+    }
+
+    /** 描画モード・視点をネイティブへ */
+    private fun pushView() {
+        backend.setView(viewPreset, viewSerial, viewMode, 0f, 0f, 1f, 0f, 0, 0)
+    }
+
     fun start() {
+        viewSerial = (System.nanoTime() and 0x3fffffff).toInt()
+        pushView()
+        onAutoOrbit?.invoke(if (orbit) 0.12f else 0f)
         val gained = state.collectOffline(System.currentTimeMillis())
         if (gained >= 1) {
             hud.popup("おかえり! +¥${fmtMoney(gained)}", Pal.AMBER)
@@ -643,10 +850,19 @@ class GameController(
     }
 
     companion object {
+        /**
+         * 自動ダイナモの負荷率。x = (rpm − idle)/(0.9·red − idle)。
+         * x ≤ 1 は 0.9·x^1.6 (回転とともに増える)、x > 1 は急勾配にして過回転を抑える (蒸気機関など)。
+         */
+        fun dynoLoad(x: Double): Double =
+            if (x <= 1.0) 0.9 * x.coerceAtLeast(0.0).pow(1.6) else min(3.0, 0.9 + 6.0 * (x - 1.0))
+
         /** エンジン特性ごとのスイートゾーン (レッドライン比) */
         fun sweetZone(family: String, cycle: String, propeller: Boolean): Pair<Double, Double> = when {
             family == "electric" -> 0.30 to 0.62
             family == "turbine" -> 0.88 to 1.06
+            cycle == "steam" -> 0.80 to 1.35
+            cycle == "stirling" -> 0.80 to 1.10
             cycle.startsWith("diesel") -> 0.62 to 0.92
             propeller -> 0.78 to 1.0
             else -> GameRules.SWEET_LO to GameRules.SWEET_HI
@@ -661,6 +877,8 @@ class GameController(
                 "wankel" -> { t += "ロータリー" to Pal.VIOLET; t += "燃費悪い" to Pal.RED }
             }
             if (cycle.startsWith("diesel")) t += "ディーゼル 高効率" to Pal.GREEN
+            if (cycle == "steam") t += "蒸気 石炭焚き" to Pal.DIM
+            if (cycle == "stirling") t += "燃料不要" to Pal.GREEN
             if (cycle.endsWith("2")) t += "2スト" to Pal.AMBER
             if (s.induction == 1) t += "ターボ" to Pal.VIOLET
             if (s.induction == 2) t += "スーパーチャージャー" to Pal.VIOLET

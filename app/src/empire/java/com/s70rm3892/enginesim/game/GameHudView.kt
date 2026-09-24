@@ -48,6 +48,8 @@ class GameHudView(context: Context) : View(context) {
     var isTurbine = false
     var thrustKn = 0f
     var autoLevel = 0
+    /** 内部表示中: 計器を右上の 1 行にまとめてエンジンを見やすくする */
+    var compact = false
 
     // ドラッグレース
     var raceActive = false
@@ -150,7 +152,7 @@ class GameHudView(context: Context) : View(context) {
         drawVignette(c, w, h)
         drawMoney(c, w)
         drawTraits(c)
-        if (raceActive) drawRace(c, w, h) else drawGauges(c, w, h)
+        if (raceActive) drawRace(c, w, h) else if (compact) drawCompact(c, w) else drawGauges(c, w, h)
         // 浮遊テキスト
         tp.textAlign = Paint.Align.CENTER
         for (f in floats) {
@@ -294,6 +296,17 @@ class GameHudView(context: Context) : View(context) {
         drawVBar(c, bx, by, bh, (combo - 1f) / (GameRules.COMBO_MAX.toFloat() - 1f), if (combo > 2.5f) Pal.VIOLET else Pal.CYAN, "COMBO", "×%.1f".format(combo))
         val heatCol = if (overheat > 0) Pal.RED else if (heat > 0.75f) Color.rgb(255, 110, 40) else Pal.AMBER
         drawVBar(c, bx - dp(34f), by, bh, heat, heatCol, "HEAT", if (overheat > 0) "%.1fs".format(overheat) else "%d%%".format((heat * 100).toInt()))
+    }
+
+    private fun drawCompact(c: Canvas, w: Float) {
+        val inSweet = rpm >= redline * sweetLo && rpm <= redline * sweetHi
+        tp.textAlign = Paint.Align.RIGHT
+        tp.textSize = dp(14f)
+        tp.color = if (limiter) Pal.RED else if (inSweet) Pal.GREEN else Pal.TEXT
+        c.drawText("%,d rpm".format(rpm.toInt()), w - dp(12f), dp(68f), tp)
+        tp.textSize = dp(12f)
+        tp.color = if (overheat > 0 || heat > 0.75f) Pal.RED else Pal.DIM
+        c.drawText("COMBO ×%.1f  HEAT %d%%".format(combo, (heat * 100).toInt()), w - dp(12f), dp(86f), tp)
     }
 
     private fun drawVBar(c: Canvas, x: Float, bottom: Float, hgt: Float, frac: Float, col: Int, label: String, value: String) {

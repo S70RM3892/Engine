@@ -19,6 +19,7 @@ object GameRules {
     const val POWER_PRICE = 1.0        // ¥ / (kW·s)
     const val FUEL_PRICE = 0.12        // ¥ / (kW·s)  燃料投入熱量あたり
     const val ELECTRIC_PRICE = 0.35    // 電動機の電力単価 (燃料より高いが効率が高い)
+    const val COAL_PRICE = 0.05        // 蒸気機関の石炭 (安いが効率が低い)
     const val THRUST_SPEED = 250.0     // ジェット: 推力 × 250m/s (巡航速度) を推進仕事率とみなす
     const val OFFLINE_RATE = 0.5       // オフライン収入の割合
     const val OFFLINE_CAP_S = 4 * 3600.0
@@ -28,8 +29,8 @@ object GameRules {
 
     fun tpFromEarnings(totalEarned: Double): Int = floor(sqrt(max(0.0, totalEarned) / 1e6)).toInt()
     fun prestigeMultiplier(tp: Int): Double = 1.0 + 0.1 * tp
-    /** 解放済みエンジン 1 台ごとに全体収入 +25% (コレクション・ボーナス) */
-    fun collectionMultiplier(unlocked: Int): Double = 1.0 + 0.25 * max(0, unlocked - 1)
+    /** 解放済みエンジン 1 台ごとに全体収入 +10% (コレクション・ボーナス) */
+    fun collectionMultiplier(unlocked: Int): Double = 1.0 + 0.10 * max(0, unlocked - 1)
 }
 
 /** アップグレードの種類。familyMask で対象を絞る。 */
@@ -58,14 +59,21 @@ enum class UpgradeKind(
     MAGNETS("高性能磁石&巻線", "定格トルク/出力 +8%", 10, 1.0, 1.45, recip = false, electric = true),
 }
 
-/** ゲームに登場するエンジン (解放順)。custom は n 気筒生成器、catalog は組み込み JSON を改造。 */
+/**
+ * エンジンツリーのノード。catalogId は組み込み JSON、custom は n 気筒生成器のパラメータ。
+ * parents のどれか 1 つを持っていれば解放できる (ルートは parents 空)。
+ * lane (行) と depth (列) はツリー画面での配置。estNet は無改造・全開・コンボ無しでの純収入の目安 [¥/s]。
+ */
 data class GameEngineDef(
     val key: String,
     val name: String,
-    val price: Double,          // 解放価格 (0 = 初期)
+    val price: Double,
     val catalogId: String? = null,
     val custom: JSONObject? = null,
-    val flavor: String,
+    val lane: Int = 0,
+    val depth: Int = 0,
+    val parents: List<String> = emptyList(),
+    val estNet: Double = 0.0,
 ) {
     val cylinderStep: Int
         get() = when (custom?.optString("layout")) {
@@ -81,46 +89,75 @@ data class GameEngineDef(
 object GameRoster {
     private fun custom(vararg kv: Pair<String, Any>) = JSONObject().apply { kv.forEach { (k, v) -> put(k, v) } }
 
-    val engines = listOf(
-        GameEngineDef("tiller", "耕運機 単気筒 230cc", 0.0,
+    /** ツリーの行 (系統) */
+    val lanes = listOf("外燃", "単気筒", "直列", "過給", "ディーゼル", "電動", "ロータリー", "水平対向", "V型", "星型", "タービン")
+
+    /** ルート (耕運機) は直列の行に置く */
+    const val ROOT = "tiller"
+
+    private fun node(id: String, name: String, lane: Int, depth: Int, price: Double, est: Double, vararg parents: String) =
+        GameEngineDef(id, name, price, catalogId = id, lane = lane, depth = depth, parents = parents.toList(), estNet = est)
+
+    val engines: List<GameEngineDef> = listOf(
+        GameEngineDef(ROOT, "耕運機 単気筒", 0.0,
             custom = custom("name" to "耕運機 単気筒", "layout" to "inline", "cylinders" to 1, "boreMm" to 70, "strokeMm" to 60,
                 "compressionRatio" to 9.0, "idleRpm" to 1300, "redlineRpm" to 6500),
-            flavor = "すべてはここから。鼓動の大きな単気筒。"),
-        GameEngineDef("twin", "並列2気筒 700cc", 800.0,
-            custom = custom("name" to "並列2気筒", "layout" to "inline", "cylinders" to 2, "boreMm" to 80, "strokeMm" to 70,
-                "compressionRatio" to 11.5, "idleRpm" to 1200, "redlineRpm" to 9500),
-            flavor = "高回転まで回るバイク用ツイン。"),
-        GameEngineDef("rotary", "ロータリー 2ローター 13B", 5_000.0, catalogId = "wankel2_13b",
-            flavor = "9000rpm まで滑らかに回る。ただし燃費は悪い。"),
-        GameEngineDef("flat6", "水平対向6気筒 3.0L", 25_000.0,
-            custom = custom("name" to "水平対向6気筒", "layout" to "flat", "cylinders" to 6, "boreMm" to 91, "strokeMm" to 76,
-                "compressionRatio" to 12.5, "idleRpm" to 850, "redlineRpm" to 9000),
-            flavor = "低重心の完全バランス。気筒追加で 8, 10, 12 気筒へ。"),
-        GameEngineDef("pmsm", "永久磁石同期モータ 210kW", 60_000.0, catalogId = "motor_pmsm",
-            flavor = "熱効率 90%。静かだが電気代がかかる。"),
-        GameEngineDef("v8", "V8 5.0L クロスプレーン", 150_000.0,
-            custom = custom("name" to "V8 クロスプレーン", "layout" to "v", "cylinders" to 8, "bankAngle" to 90, "crossplane" to true,
-                "boreMm" to 93, "strokeMm" to 92.7, "compressionRatio" to 11.0, "idleRpm" to 650, "redlineRpm" to 7000),
-            flavor = "ドロドロの不等間隔排気。アメリカンな大トルク。"),
-        GameEngineDef("i4t", "直列4気筒 2.0L ターボ", 400_000.0, catalogId = "i4_20t",
-            flavor = "過給ラグを越えれば大トルク。ブローオフの音が快感。"),
-        GameEngineDef("v12", "V12 6.0L", 1_000_000.0,
-            custom = custom("name" to "V12", "layout" to "v", "cylinders" to 12, "bankAngle" to 60, "boreMm" to 89, "strokeMm" to 80,
-                "compressionRatio" to 11.2, "idleRpm" to 800, "redlineRpm" to 8500),
-            flavor = "60°毎の等間隔点火。気筒追加で V16, V20, V24 へ。"),
-        GameEngineDef("radial", "星型9気筒 R-1820 級", 3_000_000.0, catalogId = "r9_r1820",
-            flavor = "30L の大排気量。プロペラが出力を吸収する。"),
-        GameEngineDef("jumo", "ユンカース Jumo 205", 8_000_000.0, catalogId = "jumo205",
-            flavor = "対向ピストン 2 スト・ディーゼル。効率の鬼。"),
-        GameEngineDef("turboshaft", "ターボシャフト", 25_000_000.0, catalogId = "turboshaft",
-            flavor = "1.4MW の軸出力。スプールラグと EGT に注意。"),
-        GameEngineDef("deltic", "ネイピア デルティック 18気筒", 60_000_000.0, catalogId = "deltic18",
-            flavor = "三角形のクランク配置、88L・1800kW。"),
-        GameEngineDef("turbofan", "高バイパス ターボファン", 150_000_000.0, catalogId = "turbofan",
-            flavor = "推力 120kN。帝国の頂点。"),
+            lane = 2, depth = 0, estNet = 5.0),
+        node("stirling_alpha", "スターリング", 0, 1, 300.0, 0.8, "tiller"),
+        node("steam_mill", "蒸気 製粉所", 0, 2, 4000.0, 30.0, "stirling_alpha"),
+        node("steam_loco", "蒸気機関車", 0, 6, 710000.0, 1034.0, "steam_mill"),
+        node("i1_250", "単気筒 250", 1, 1, 800.0, 8.9, "tiller"),
+        node("i1_2st_125", "2スト 125", 1, 2, 1000.0, 4.6, "i1_250"),
+        node("i2_270", "並列2 270°", 2, 1, 2100.0, 22.8, "tiller"),
+        node("i3_1200", "直列3", 2, 2, 4000.0, 29.8, "i2_270"),
+        node("i4_20", "直列4 2.0", 2, 3, 11000.0, 52.2, "i3_1200"),
+        node("i5_25", "直列5", 2, 4, 18000.0, 60.8, "i4_20"),
+        node("i6_30", "直列6", 2, 5, 35000.0, 77.4, "i5_25"),
+        node("i8_straight", "直列8", 2, 6, 47000.0, 68.3, "i6_30"),
+        node("i4_20t", "直4 ターボ", 3, 4, 51000.0, 169.0, "i4_20"),
+        node("v8_sc", "V8 スーパーチャージ", 3, 6, 230000.0, 338.0, "i4_20t", "v8_cross"),
+        node("wankel3_20b", "3ローター 20B", 3, 7, 230000.0, 227.0, "v8_sc", "wankel2_13b"),
+        node("i4_tdi", "直4 ディーゼル", 4, 4, 28000.0, 92.0, "i4_20"),
+        node("jumo205", "Jumo 205", 4, 6, 340000.0, 502.0, "i4_tdi"),
+        node("deltic18", "デルティック", 4, 8, 2700000.0, 1764.0, "jumo205"),
+        node("motor_induction", "誘導モータ", 5, 3, 18000.0, 90.6, "i3_1200", "v4_90", "b2_1200"),
+        node("motor_pmsm", "PMSM モータ", 5, 4, 30000.0, 99.8, "motor_induction"),
+        node("wankel1", "1ローター", 6, 1, 1400.0, 15.8, "tiller"),
+        node("wankel2_13b", "2ローター 13B", 6, 2, 7300.0, 54.2, "wankel1"),
+        node("wankel4_26b", "4ローター 26B", 6, 4, 34000.0, 113.0, "wankel2_13b"),
+        node("b2_1200", "水平対向2", 7, 1, 3200.0, 35.8, "tiller"),
+        node("b4_20", "水平対向4", 7, 2, 19000.0, 137.3, "b2_1200"),
+        node("b6_30", "水平対向6", 7, 3, 25000.0, 97.6, "b4_20"),
+        node("v2_45", "V2 45°", 8, 1, 3200.0, 35.6, "tiller"),
+        node("v4_90", "V4 90°", 8, 2, 4200.0, 28.6, "v2_45"),
+        node("v6_60", "V6 60°", 8, 3, 18000.0, 88.8, "v4_90"),
+        node("v8_cross", "V8 クロス", 8, 4, 40000.0, 131.0, "v6_60"),
+        node("v8_flat", "V8 フラット", 8, 5, 67000.0, 148.0, "v8_cross"),
+        node("v10_72", "V10", 8, 6, 110000.0, 157.0, "v8_flat"),
+        node("v12_60", "V12", 8, 7, 180000.0, 178.0, "v10_72"),
+        node("v16_45", "V16", 8, 8, 230000.0, 63.0, "v12_60"),
+        node("r3", "星型3", 9, 1, 1500.0, 16.4, "tiller"),
+        node("r5", "星型5", 9, 2, 3700.0, 27.1, "r3"),
+        node("r7", "星型7", 9, 3, 7500.0, 36.8, "r5"),
+        node("r9_r1820", "星型9 R-1820", 9, 4, 110000.0, 374.0, "r7"),
+        node("r14_r1830", "複列14", 9, 5, 210000.0, 460.0, "r9_r1820"),
+        node("r18_r2800", "複列18", 9, 6, 580000.0, 844.0, "r14_r1830"),
+        node("r28_r4360", "4列28", 9, 7, 1300000.0, 1315.0, "r18_r2800"),
+        node("turbojet", "ターボジェット", 10, 8, 3000000.0, 1971.0, "r18_r2800", "jumo205"),
+        node("turboshaft", "ターボシャフト", 10, 9, 3900000.0, 936.0, "turbojet"),
+        node("turbofan", "ターボファン", 10, 10, 64000000.0, 18442.0, "turboshaft"),
     )
 
-    fun byKey(key: String) = engines.firstOrNull { it.key == key } ?: engines.first()
+    private val byKeyMap = engines.associateBy { it.key }
+    fun byKey(key: String) = byKeyMap[key] ?: engines.first()
+    fun has(key: String) = key in byKeyMap
+    fun children(key: String) = engines.filter { key in it.parents }
+
+    /** 旧版 (一本道ロスター) のキー → 新しいツリーのキー */
+    val legacyKeys = mapOf(
+        "twin" to "i2_270", "rotary" to "wankel2_13b", "i4t" to "i4_20t", "flat6" to "b6_30", "pmsm" to "motor_pmsm",
+        "v8" to "v8_cross", "v12" to "v12_60", "radial" to "r9_r1820", "jumo" to "jumo205", "deltic" to "deltic18",
+    )
 }
 
 /** 1 エンジン分の進行状況 */
@@ -158,6 +195,18 @@ class GameState {
     var offlineRate = 0.0         // 自動運転時の平均純収入 [¥/s]
 
     fun prog(key: String) = progress.getOrPut(key) { EngineProgress(key) }
+
+    /** ツリー上で解放可能か (未所持で、親のどれかを所持) */
+    fun canUnlock(def: GameEngineDef): Boolean =
+        def.key !in unlocked && (def.parents.isEmpty() || def.parents.any { it in unlocked })
+
+    /** 解放を試みる。成功したら true */
+    fun unlock(def: GameEngineDef): Boolean {
+        if (!canUnlock(def) || money < def.price) return false
+        money -= def.price
+        unlocked += def.key
+        return true
+    }
     val multiplier: Double get() = GameRules.prestigeMultiplier(techPoints) * GameRules.collectionMultiplier(unlocked.size)
 
     fun upgradeCost(def: GameEngineDef, kind: UpgradeKind): Double {
@@ -225,10 +274,17 @@ class GameState {
                 g.runEarned = o.optDouble("run", 0.0)
                 g.techPoints = o.optInt("tp", 0)
                 g.automation = o.optInt("auto", 0)
-                g.current = o.optString("current", g.current)
-                o.optJSONArray("unlocked")?.let { a -> for (i in 0 until a.length()) g.unlocked += a.getString(i) }
+                fun migrate(k: String) = GameRoster.legacyKeys[k] ?: k
+                g.current = migrate(o.optString("current", g.current)).takeIf { GameRoster.has(it) } ?: GameRoster.ROOT
+                o.optJSONArray("unlocked")?.let { a ->
+                    for (i in 0 until a.length()) migrate(a.getString(i)).takeIf { GameRoster.has(it) }?.let { g.unlocked += it }
+                }
+                if (g.current !in g.unlocked) g.current = GameRoster.ROOT
                 o.optJSONArray("progress")?.let { a ->
-                    for (i in 0 until a.length()) EngineProgress.fromJson(a.getJSONObject(i)).let { p -> g.progress[p.key] = p }
+                    for (i in 0 until a.length()) EngineProgress.fromJson(a.getJSONObject(i)).let { p ->
+                        val k = migrate(p.key)
+                        if (GameRoster.has(k)) g.progress[k] = EngineProgress(k).apply { levels += p.levels; bestDragTime = p.bestDragTime }
+                    }
                 }
                 g.lastSeenMs = o.optLong("lastSeen", 0L)
                 g.offlineRate = o.optDouble("offlineRate", 0.0)
