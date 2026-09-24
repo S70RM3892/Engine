@@ -19,10 +19,7 @@ import com.s70rm3892.enginesim.ConsoleBackend
 import com.s70rm3892.enginesim.EngineOwner
 import com.s70rm3892.enginesim.EngineSummary
 import com.s70rm3892.enginesim.Tel
-import com.s70rm3892.enginesim.ui.KeyButton
 import com.s70rm3892.enginesim.ui.Pal
-import com.s70rm3892.enginesim.ui.PedalButton
-import com.s70rm3892.enginesim.ui.SegmentedSelector
 import com.s70rm3892.enginesim.ui.dp
 import org.json.JSONObject
 import kotlin.math.max
@@ -53,7 +50,7 @@ class GameController(
     }
 
     enum class Phase { NIGHT, DAY, RACE }
-    enum class NightTab(val label: String) { BOARD("強化ボード"), TUNE("チューン"), ENGINES("エンジン"), GOALS("目標"), RACE("ゼロヨン") }
+    enum class NightTab(val label: String) { BOARD("ボード"), TUNE("チューン"), ENGINES("エンジン"), GOALS("目標"), RACE("ゼロヨン") }
     private enum class RaceState { COUNTDOWN, RUN, DONE }
 
     val state: GameState = GameState.fromJson(store.load())
@@ -83,12 +80,17 @@ class GameController(
     private var racePerfect = 0
 
     // 内部表示
-    private var viewMode = 0
-    private var viewPreset = 0
+    private var viewMode = state.settings.viewMode
+    private var viewPreset = state.settings.viewPreset
     private var viewSerial = 1
-    private var slow = false
-    private var orbit = true
+    private var slow = state.settings.slowMo
+    private var orbit = state.settings.autoOrbit
     var onAutoOrbit: ((Float) -> Unit)? = null
+    /** BGM (GameActivity が BgmPlayer を渡す。テストでは null) */
+    var bgm: BgmSynth? = null
+    /** BGM の ON/OFF が変わったとき (プレイヤーの開始/停止) */
+    var onBgmToggle: ((Boolean) -> Unit)? = null
+
     /** ネイティブ演出の強さ (ニトロ/フレンジー中は炎・火花・揺れを増やす) */
     var onEffects: ((Float) -> Unit)? = null
     private var effectsLevel = 1f
@@ -109,22 +111,24 @@ class GameController(
 
     // UI
     private lateinit var hud: GameHudView
-    private lateinit var pedal: PedalButton
-    private lateinit var shiftKey: KeyButton
-    private lateinit var leaveKey: KeyButton
-    private lateinit var insideKey: KeyButton
+    private lateinit var pedal: PopPedal
+    private lateinit var shiftKey: PopButton
+    private lateinit var leaveKey: PopButton
+    private lateinit var insideKey: PopButton
     private lateinit var viewBar: LinearLayout
-    private lateinit var modeSel: SegmentedSelector
+    private lateinit var modeSel: PopTabs
     private lateinit var night: LinearLayout
+    private lateinit var nightRoot: FrameLayout
+    private lateinit var sky: NightSkyView
     private lateinit var nightHeader: TextView
     private lateinit var nightReport: TextView
     private lateinit var forecast: TextView
-    private lateinit var goKey: KeyButton
-    private lateinit var tabs: SegmentedSelector
+    private lateinit var goKey: PopButton
+    private lateinit var tabs: PopTabs
     private lateinit var pane: FrameLayout
     private lateinit var graph: NodeGraphView
     private lateinit var graphInfo: TextView
-    private lateinit var graphAction: KeyButton
+    private lateinit var graphAction: PopButton
     private lateinit var graphBox: LinearLayout
     private lateinit var listBox: LinearLayout
     private var tab = NightTab.BOARD
@@ -144,16 +148,17 @@ class GameController(
         stage.addView(hud, match())
 
         val controls = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
-        pedal = PedalButton(ctx).apply { label = "踏め!"; accent = Pal.RED }
-        shiftKey = KeyButton(ctx, "SHIFT ▲").apply { accent = Pal.CYAN; onPress = { shiftUp() }; visibility = View.GONE }
-        controls.addView(pedal, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(120f).toInt()))
+        pedal = PopPedal(ctx).apply { label = "踏め!"; accent = Pal.RED }
+        shiftKey = PopButton(ctx, "SHIFT ▲").apply { accent = Pal.CYAN; onPress = { shiftUp() }; visibility = View.GONE }
+        controls.addView(pedal, LinearLayout.LayoutParams(ctx.dp(100f).toInt(), ctx.dp(124f).toInt()))
         nitroBtn = NitroButton(ctx).apply { onFire = { fireNitro() }; visibility = View.GONE }
         controls.addView(nitroBtn, LinearLayout.LayoutParams(ctx.dp(92f).toInt(), ctx.dp(92f).toInt()).apply { marginStart = ctx.dp(10f).toInt() })
         controls.addView(shiftKey, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(96f).toInt()).apply { marginStart = ctx.dp(10f).toInt() })
         stage.addView(controls, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM or Gravity.START).apply { setMargins(ctx.dp(12f).toInt(), 0, 0, ctx.dp(12f).toInt()) })
+            // 親指が届きやすいよう下端から少し上げる
+            Gravity.BOTTOM or Gravity.START).apply { setMargins(ctx.dp(16f).toInt(), 0, 0, ctx.dp(34f).toInt()) })
 
-        leaveKey = KeyButton(ctx, "早退").apply { onRelease = { if (phase == Phase.DAY) endDay() } }
+        leaveKey = PopButton(ctx, "早退").apply { onRelease = { if (phase == Phase.DAY) endDay() } }
         stage.addView(leaveKey, FrameLayout.LayoutParams(ctx.dp(64f).toInt(), ctx.dp(30f).toInt(), Gravity.TOP or Gravity.START)
             .apply { setMargins(ctx.dp(12f).toInt(), ctx.dp(142f).toInt(), 0, 0) })
 
@@ -175,7 +180,7 @@ class GameController(
 
     private fun buildInsideView(stage: FrameLayout) {
         val ctx = activity
-        insideKey = KeyButton(ctx, "内部を見る", toggle = true).apply { accent = Pal.CYAN; onToggle = { showInside(it) } }
+        insideKey = PopButton(ctx, "内部を見る", toggle = true).apply { accent = Pal.CYAN; onToggle = { showInside(it) } }
         stage.addView(insideKey, FrameLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(34f).toInt(), Gravity.TOP or Gravity.START)
             .apply { setMargins(ctx.dp(12f).toInt(), ctx.dp(100f).toInt(), 0, 0) })
         viewBar = LinearLayout(ctx).apply {
@@ -185,27 +190,31 @@ class GameController(
             setPadding(pd, pd, pd, pd)
             visibility = View.GONE
         }
-        modeSel = SegmentedSelector(ctx, listOf("外観", "透視", "断面", "温度", "応力")).apply {
+        modeSel = PopTabs(ctx, listOf("外観", "透視", "断面", "温度", "応力")).apply {
             accent = Pal.CYAN
-            onSelect = { i -> viewMode = i; pushView() }
+            onSelect = { i -> viewMode = i; pushView(); rememberView() }
+            selected = viewMode
         }
-        val presetSel = SegmentedSelector(ctx, listOf("全体", "断面", "クランク", "バルブ", "出力軸")).apply {
+        val presetSel = PopTabs(ctx, listOf("全体", "断面", "クランク", "バルブ", "出力軸")).apply {
+            selected = viewPreset
             onSelect = { i ->
                 viewPreset = i
                 viewSerial++
                 if (i == 1) { viewMode = 2; modeSel.selected = 2 }
                 pushView()
+                rememberView()
             }
         }
         val keys = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        keys.addView(KeyButton(ctx, "スロー ×1/16", toggle = true).apply {
-            onToggle = { slow = it; if (it) hud.floatText("映像だけスロー (収入・音は実時間)", Pal.CYAN) }
+        keys.addView(PopButton(ctx, "スロー ×1/16", toggle = true).apply {
+            on = slow
+            onToggle = { slow = it; rememberView(); if (it) hud.floatText("映像だけスロー (収入・音は実時間)", Pal.CYAN) }
         }, LinearLayout.LayoutParams(0, ctx.dp(34f).toInt(), 1f))
-        keys.addView(KeyButton(ctx, "自動周回", toggle = true).apply {
+        keys.addView(PopButton(ctx, "自動周回", toggle = true).apply {
             on = true
-            onToggle = { orbit = it; onAutoOrbit?.invoke(if (it) 0.12f else 0f) }
+            onToggle = { orbit = it; rememberView(); onAutoOrbit?.invoke(if (it) 0.12f else 0f) }
         }, LinearLayout.LayoutParams(0, ctx.dp(34f).toInt(), 1f))
-        keys.addView(KeyButton(ctx, "閉じる").apply { onRelease = { showInside(false) } },
+        keys.addView(PopButton(ctx, "閉じる").apply { onRelease = { showInside(false) } },
             LinearLayout.LayoutParams(ctx.dp(64f).toInt(), ctx.dp(34f).toInt()))
         viewBar.addView(modeSel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(38f).toInt()))
         viewBar.addView(presetSel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(38f).toInt()))
@@ -220,13 +229,25 @@ class GameController(
         insideKey.visibility = if (!allowed || on || phase == Phase.NIGHT) View.GONE else View.VISIBLE
         viewBar.visibility = if (on && allowed && phase != Phase.NIGHT) View.VISIBLE else View.GONE
         hud.compact = on && allowed
-        if (!on) setViewMode(0)
+        // パネルを閉じても選んだ表示はそのまま (保存済み)。ゴーグル未購入なら外観に固定
+        if (!allowed && viewMode != 0) setViewMode(0)
+    }
+
+    /** 表示設定を保存 (パネルを閉じても・アプリを再起動しても残る) */
+    private fun rememberView() {
+        val st = state.settings
+        st.viewMode = viewMode
+        st.viewPreset = viewPreset
+        st.slowMo = slow
+        st.autoOrbit = orbit
+        save()
     }
 
     fun setViewMode(mode: Int) {
         viewMode = mode
         modeSel.selected = mode
         pushView()
+        rememberView()
     }
 
     private fun pushView() {
@@ -237,22 +258,46 @@ class GameController(
 
     private fun buildNight(root: FrameLayout) {
         val ctx = activity
-        night = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; isClickable = true }
+        nightRoot = FrameLayout(ctx).apply { isClickable = true }
+        sky = NightSkyView(ctx)
+        nightRoot.addView(sky, match())
+        night = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        nightRoot.addView(night, match())
         // 左: 今日の結果・明日の予報・出勤
         val left = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.argb(215, 8, 10, 13))
-            val pd = ctx.dp(10f).toInt()
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.argb(150, 30, 18, 70)); cornerRadius = ctx.dp(18f)
+            }
+            val pd = ctx.dp(12f).toInt()
             setPadding(pd, pd, pd, pd)
         }
-        nightHeader = text(16f, Pal.AMBER, bold = true).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
+        nightHeader = text(15f, Pop.YELLOW, bold = true)
         nightReport = text(12f)
-        forecast = text(12f, Pal.CYAN)
-        goKey = KeyButton(ctx, "出勤 ▶").apply { accent = Pal.GREEN; onRelease = { startDay() } }
+        forecast = text(12f, Pop.CYAN, bold = true)
+        goKey = PopButton(ctx, "出勤 ▶").apply { accent = Pal.GREEN; onRelease = { startDay() } }
+        val bgmKey = PopButton(ctx, "♪ BGM", toggle = true).apply {
+            accent = Pal.VIOLET
+            on = state.settings.bgmOn
+            onToggle = { state.settings.bgmOn = it; onBgmToggle?.invoke(it); save() }
+        }
+        val volSteps = floatArrayOf(0.3f, 0.6f, 1.0f)
+        val volKey = PopButton(ctx, "音量 ${(state.settings.bgmVolume * 100).toInt()}%").apply { accent = Pal.VIOLET }
+        volKey.onRelease = {
+            val i = volSteps.indexOfFirst { it > state.settings.bgmVolume + 0.01f }.let { if (it < 0) 0 else it }
+            state.settings.bgmVolume = volSteps[i]
+            volKey.text = "音量 ${(volSteps[i] * 100).toInt()}%"
+            volKey.invalidate()
+            save()
+        }
+        val soundRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        soundRow.addView(bgmKey, LinearLayout.LayoutParams(0, ctx.dp(34f).toInt(), 1f))
+        soundRow.addView(volKey, LinearLayout.LayoutParams(0, ctx.dp(34f).toInt(), 1f))
         left.addView(nightHeader)
         val sc = ScrollView(ctx)
         sc.addView(nightReport)
         left.addView(sc, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        left.addView(soundRow)
         left.addView(forecast)
         left.addView(goKey, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(52f).toInt()).apply { topMargin = ctx.dp(6f).toInt() })
         night.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 36f))
@@ -260,11 +305,10 @@ class GameController(
         // 右: タブ
         val right = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Pal.BG)
             val pd = ctx.dp(4f).toInt()
             setPadding(pd, pd, pd, pd)
         }
-        tabs = SegmentedSelector(ctx, NightTab.entries.map { it.label }).apply {
+        tabs = PopTabs(ctx, NightTab.entries.map { it.label }).apply {
             onSelect = { i -> tab = NightTab.entries[i]; selectedNode = null; rebuildPane() }
         }
         right.addView(tabs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(42f).toInt()))
@@ -279,22 +323,22 @@ class GameController(
         val detail = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Pal.PANEL)
-            val pd = ctx.dp(6f).toInt()
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(Pop.CARD); cornerRadius = ctx.dp(14f) }
+            val pd = ctx.dp(8f).toInt()
             setPadding(pd, pd, pd, pd)
         }
         graphInfo = text(11f).apply { maxLines = 3 }
-        graphAction = KeyButton(ctx, "").apply { onRelease = { graphActionPressed() } }
+        graphAction = PopButton(ctx, "").apply { onRelease = { graphActionPressed() } }
         detail.addView(graphInfo, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         detail.addView(graphAction, LinearLayout.LayoutParams(ctx.dp(128f).toInt(), ctx.dp(46f).toInt()))
         graphBox.addView(detail, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ctx.dp(64f).toInt()))
         listBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        root.addView(night, match())
+        root.addView(nightRoot, match())
     }
 
     private fun showNight() {
         phase = Phase.NIGHT
-        night.visibility = View.VISIBLE
+        nightRoot.visibility = View.VISIBLE
         hud.dayActive = false
         hud.raceActive = false
         leaveKey.visibility = View.GONE
@@ -692,7 +736,7 @@ class GameController(
         val prof = profile() ?: kotlin.run { reloadEngine(); profile() } ?: return
         run = RunSession(prof, state.perks, state.nextEvent, state.multiplier)
         phase = Phase.DAY
-        night.visibility = View.GONE
+        nightRoot.visibility = View.GONE
         pedal.visibility = View.VISIBLE
         leaveKey.visibility = View.VISIBLE
         hud.dayActive = true
@@ -717,6 +761,27 @@ class GameController(
         state.tipsSeen += key
         tipText = text
         tipTime = seconds
+    }
+
+    /** BGM: 場面で曲を切り替え (夜/昼/ゼロヨン)、昼はコンボ・フィーバー・ニトロで層を重ねる */
+    private fun updateBgm() {
+        val b = bgm ?: return
+        b.volume = state.settings.bgmVolume * 0.7f
+        b.mode = when (phase) {
+            Phase.NIGHT -> BgmSynth.Mode.NIGHT
+            Phase.DAY -> BgmSynth.Mode.DAY
+            Phase.RACE -> BgmSynth.Mode.RACE
+        }
+        val r = run
+        if (phase == Phase.DAY && r != null) {
+            b.intensity = ((r.combo - 1) / max(0.1, state.perks.comboCap - 1)).toFloat()
+            b.fever = r.combo >= state.perks.comboCap - 1e-6
+            b.nitro = r.nitroTime > 0 || r.frenzyTime > 0
+        } else {
+            b.intensity = 0f
+            b.fever = false
+            b.nitro = false
+        }
     }
 
     private fun haptic(strong: Boolean) {
@@ -794,6 +859,7 @@ class GameController(
         hud.autoLevel = state.perks.assistLevel
         hud.advance(dt.toFloat())
         nitroBtn.advance(dt.toFloat())
+        updateBgm()
         if (golden.visibility == View.VISIBLE) golden.advance(dt.toFloat())
         if (phase == Phase.DAY) {
             stage.translationX = hud.shakeX
@@ -809,8 +875,9 @@ class GameController(
                 if (line.startsWith("合計") || line.startsWith("・")) { hud.burstConfetti(70); haptic(true) } else if (line.isNotBlank()) haptic(false)
             }
         }
-        if (phase == Phase.NIGHT && night.visibility == View.VISIBLE) {
+        if (phase == Phase.NIGHT && nightRoot.visibility == View.VISIBLE) {
             if (tab == NightTab.BOARD || tab == NightTab.ENGINES) graph.advance(dt.toFloat())
+            sky.advance(dt.toFloat())
             refreshTimer += dt
             if (refreshTimer > 0.5) { refreshTimer = 0.0; refreshNightHeader() }
         }
@@ -957,7 +1024,7 @@ class GameController(
         raceGear = 1
         raceTimer = 3.0
         racePerfect = 0
-        night.visibility = View.GONE
+        nightRoot.visibility = View.GONE
         pedal.visibility = View.VISIBLE
         hud.raceActive = true
         shiftKey.visibility = if (mt) View.VISIBLE else View.GONE

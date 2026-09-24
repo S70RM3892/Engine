@@ -491,6 +491,10 @@ class GameTest {
         assertEquals(2, backend.lastMode)
         shot("game_hud_inside.png")
         game.showInside(false)
+        // パネルを閉じても表示モードは残り、セーブにも入る
+        assertEquals(2, backend.lastMode)
+        assertEquals(2, game.state.settings.viewMode)
+        assertEquals(2, GameState.fromJson(store.saved).settings.viewMode)
 
         // シフト終了 (時間切れまで進める) → 夜に戻り、日付が進む
         shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(70_000))

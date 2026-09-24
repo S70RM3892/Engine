@@ -98,15 +98,15 @@ class NodeGraphView(context: Context) : View(context) {
     }
 
     override fun onDraw(c: Canvas) {
-        c.drawColor(Color.rgb(10, 12, 16))
+        c.drawColor(Color.argb(70, 10, 8, 30))
         c.save()
         c.translate(panX, panY)
         for (i in lanes.indices) {
             val y0 = top + rowH * i
             p.style = Paint.Style.FILL
             p.color = when {
-                laneLocked(i) != null -> Color.argb(90, 50, 20, 20)
-                i % 2 == 0 -> Color.argb(40, 60, 70, 90)
+                laneLocked(i) != null -> Color.argb(70, 120, 30, 60)
+                i % 2 == 0 -> Color.argb(35, 180, 160, 255)
                 else -> Color.TRANSPARENT
             }
             c.drawRect(0f, y0, contentW, y0 + rowH, p)
@@ -115,11 +115,11 @@ class NodeGraphView(context: Context) : View(context) {
             val parent = byId[pk] ?: continue
             val ps = parent.state
             val owned = ps == State.OWNED || ps == State.MAXED
-            line.strokeWidth = dp(if (owned && d.state != State.LOCKED) 3f else 2f)
+            line.strokeWidth = dp(if (owned && d.state != State.LOCKED) 5f else 3f)
             line.color = when {
-                owned && (d.state == State.OWNED || d.state == State.MAXED) -> Pal.GREEN
-                owned -> Pal.AMBER
-                else -> Color.argb(110, 90, 96, 110)
+                owned && (d.state == State.OWNED || d.state == State.MAXED) -> Pop.MINT
+                owned -> Pop.YELLOW
+                else -> Color.argb(90, 200, 190, 240)
             }
             val x0 = cx(parent) + nodeW / 2
             val y0 = cy(parent)
@@ -135,42 +135,38 @@ class NodeGraphView(context: Context) : View(context) {
             val x = cx(d) - nodeW / 2
             val y = cy(d) - nodeH / 2
             r.set(x, y, x + nodeW, y + nodeH)
-            p.style = Paint.Style.FILL
-            p.color = when (d.state) {
-                State.MAXED -> Color.rgb(22, 44, 30)
-                State.OWNED -> Color.rgb(28, 52, 36)
-                State.AVAILABLE -> Color.rgb(48, 40, 22)
-                State.LOCKED -> Color.rgb(26, 28, 34)
+            val col = when (d.state) {
+                State.MAXED -> Pop.PURPLE
+                State.OWNED -> Pop.darker(Pop.MINT, 0.25f)
+                State.AVAILABLE -> if (d.affordable) d.accent else Pop.darker(d.accent, 0.45f)
+                State.LOCKED -> Pop.CARD
             }
-            c.drawRoundRect(r, dp(8f), dp(8f), p)
             if (d.affordable) {
                 val a = (0.35f + 0.35f * sin(time * 5f)).coerceIn(0f, 1f)
-                p.color = (d.accent and 0xFFFFFF) or ((a * 110).toInt() shl 24)
-                c.drawRoundRect(r, dp(8f), dp(8f), p)
+                p.style = Paint.Style.FILL
+                p.color = (d.accent and 0xFFFFFF) or ((a * 150).toInt() shl 24)
+                c.drawRoundRect(r.left - dp(4f), r.top - dp(4f), r.right + dp(4f), r.bottom + dp(4f), dp(16f), dp(16f), p)
             }
+            Pop.pill(c, r, col, p, dp(14f), dp(4f))
             if (d.progress >= 0f) {
-                p.color = Color.argb(160, 80, 210, 120)
-                c.drawRect(x + dp(6f), y + nodeH - dp(6f), x + dp(6f) + (nodeW - dp(12f)) * d.progress, y + nodeH - dp(3f), p)
+                p.style = Paint.Style.FILL
+                p.color = Color.argb(200, 255, 230, 120)
+                c.drawRoundRect(x + dp(8f), y + nodeH - dp(9f), x + dp(8f) + (nodeW - dp(16f)) * d.progress, y + nodeH - dp(6f), dp(2f), dp(2f), p)
             }
             p.style = Paint.Style.STROKE
-            p.strokeWidth = dp(if (d.id == selectedId) 3f else 1.5f)
-            p.color = when {
-                d.id == selectedId -> Color.WHITE
-                d.current -> Pal.CYAN
-                d.state == State.OWNED || d.state == State.MAXED -> Pal.GREEN
-                d.affordable -> d.accent
-                d.state == State.AVAILABLE -> Color.rgb(150, 120, 60)
-                else -> Pal.BORDER
+            p.strokeWidth = dp(if (d.id == selectedId) 3.5f else 0f)
+            if (d.id == selectedId || d.current) {
+                p.strokeWidth = dp(3f)
+                p.color = if (d.id == selectedId) Color.WHITE else Pop.CYAN
+                c.drawRoundRect(r, dp(14f), dp(14f), p)
             }
-            c.drawRoundRect(r, dp(8f), dp(8f), p)
-            tName.color = if (d.state == State.LOCKED) Pal.DIM else Pal.TEXT
+            p.style = Paint.Style.FILL
+            tName.color = if (d.state == State.LOCKED) Pop.SUB else Color.WHITE
             c.drawText(ellipsize(d.title, tName, nodeW - dp(12f)), x + dp(6f), y + dp(16f), tName)
             tSub.color = when {
-                d.current -> Pal.CYAN
-                d.state == State.MAXED -> Pal.GREEN
-                d.affordable -> d.accent
-                d.state == State.LOCKED -> Pal.DIM
-                else -> Color.rgb(170, 140, 80)
+                d.current -> Pop.CYAN
+                d.state == State.LOCKED -> Pop.SUB
+                else -> Color.argb(230, 255, 255, 255)
             }
             c.drawText(ellipsize(d.sub, tSub, nodeW - dp(12f)), x + dp(6f), y + dp(31f), tSub)
         }
@@ -183,10 +179,10 @@ class NodeGraphView(context: Context) : View(context) {
             val label = if (lock != null) "🔒$name" else name
             val tw = tLane.measureText(label)
             p.style = Paint.Style.FILL
-            p.color = Color.argb(210, 10, 12, 16)
+            p.color = Color.argb(220, 40, 24, 90)
             r.set(0f, yc - dp(10f), tw + dp(14f), yc + dp(10f))
             c.drawRoundRect(r, dp(4f), dp(4f), p)
-            tLane.color = if (lock != null) Color.rgb(200, 110, 100) else Pal.DIM
+            tLane.color = if (lock != null) Pop.PINK else Pop.SUB
             c.drawText(label, dp(7f), yc + dp(4f), tLane)
         }
     }

@@ -200,6 +200,30 @@ class EngineProgress(val key: String) {
     }
 }
 
+/** 見た目と音の設定 */
+class GameSettings {
+    var viewMode = 0          // 0 外観 1 透視 2 断面 3 温度 4 応力
+    var viewPreset = 0        // 0 全体 1 断面 2 クランク 3 バルブ 4 出力軸
+    var slowMo = false
+    var autoOrbit = true
+    var bgmOn = true
+    var bgmVolume = 0.6f
+
+    fun toJson() = JSONObject().apply {
+        put("mode", viewMode); put("preset", viewPreset); put("slow", slowMo); put("orbit", autoOrbit)
+        put("bgm", bgmOn); put("bgmVol", bgmVolume.toDouble())
+    }
+
+    fun read(o: JSONObject) {
+        viewMode = o.optInt("mode", 0).coerceIn(0, 4)
+        viewPreset = o.optInt("preset", 0).coerceIn(0, 4)
+        slowMo = o.optBoolean("slow", false)
+        autoOrbit = o.optBoolean("orbit", true)
+        bgmOn = o.optBoolean("bgm", true)
+        bgmVolume = o.optDouble("bgmVol", 0.6).toFloat().coerceIn(0f, 1f)
+    }
+}
+
 /** 累計の記録 (目標・実績の判定に使う) */
 class GameStats {
     var days = 0
@@ -238,6 +262,7 @@ class GameState {
     var raceUsedDay = 0                              // その夜のゼロヨンを走った日
     var nextEvent = DayEvent.NONE                    // 明日のイベント (夜のうちに予報される)
     val tipsSeen = mutableSetOf<String>()            // 表示済みのヒント
+    val settings = GameSettings()                    // 見た目・音の設定 (閉じても・再起動しても保持)
 
     fun prog(key: String) = progress.getOrPut(key) { EngineProgress(key) }
     fun lv(node: String) = board[node] ?: 0
@@ -333,6 +358,7 @@ class GameState {
         put("race", raceUsedDay)
         put("event", nextEvent.name)
         put("tips", org.json.JSONArray(tipsSeen.toList()))
+        put("settings", settings.toJson())
     }.toString()
 
     companion object {
@@ -359,6 +385,7 @@ class GameState {
                 g.raceUsedDay = o.optInt("race", 0)
                 g.nextEvent = runCatching { DayEvent.valueOf(o.optString("event", "NONE")) }.getOrDefault(DayEvent.NONE)
                 o.optJSONArray("tips")?.let { a -> for (i in 0 until a.length()) g.tipsSeen += a.getString(i) }
+                o.optJSONObject("settings")?.let { g.settings.read(it) }
             }
             return g
         }

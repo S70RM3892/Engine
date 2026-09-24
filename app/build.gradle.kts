@@ -12,8 +12,8 @@ android {
         applicationId = "com.s70rm3892.enginesim"
         minSdk = 26          // AAudio (Oboe fast path) + GLES 3.0 保証
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.7.1"
+        versionCode = 9
+        versionName = "0.8.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         externalNativeBuild {
             cmake {

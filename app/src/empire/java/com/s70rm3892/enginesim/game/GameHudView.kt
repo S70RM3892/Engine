@@ -114,7 +114,7 @@ class GameHudView(context: Context) : View(context) {
         private set
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD }
     private val sp = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val rect = RectF()
     private val rnd = Random(7)
@@ -253,10 +253,8 @@ class GameHudView(context: Context) : View(context) {
             val a = (f.life / f.max).coerceIn(0f, 1f)
             val pop = 1f + 0.35f * max(0f, (f.life - f.max + 0.15f) / 0.15f)
             tp.textSize = f.size * pop
-            tp.color = Color.argb((a * 255).toInt(), 0, 0, 0)
-            c.drawText(f.text, f.x + dp(2f), f.y + dp(2f), tp)
-            tp.color = (f.color and 0xFFFFFF) or ((a * 255).toInt() shl 24)
-            c.drawText(f.text, f.x, f.y, tp)
+            Pop.outlined(c, f.text, f.x, f.y, tp, (f.color and 0xFFFFFF) or ((a * 255).toInt() shl 24),
+                (Pop.INK and 0xFFFFFF) or ((a * 255).toInt() shl 24), f.size * 0.22f)
         }
         // 紙吹雪
         p.style = Paint.Style.FILL
@@ -274,11 +272,12 @@ class GameHudView(context: Context) : View(context) {
             val scale = if (t < 0.18f) 0.4f + 0.8f * (t / 0.18f) else 1.2f - 0.2f * min(1f, (t - 0.18f) / 0.2f)
             val a = min(1f, popupLife / 0.4f)
             tp.textAlign = Paint.Align.CENTER
-            tp.textSize = dp(40f) * scale
-            tp.color = Color.argb((a * 200).toInt(), 0, 0, 0)
-            c.drawText(popupText, w / 2 + dp(3f), h * 0.3f + dp(3f), tp)
-            tp.color = (popupColor and 0xFFFFFF) or ((a * 255).toInt() shl 24)
-            c.drawText(popupText, w / 2, h * 0.3f, tp)
+            tp.textSize = dp(44f) * scale
+            c.save()
+            c.rotate(3f * sin(t * 14f) * (1.6f - t), w / 2, h * 0.3f)
+            Pop.outlined(c, popupText, w / 2, h * 0.3f, tp, (popupColor and 0xFFFFFF) or ((a * 255).toInt() shl 24),
+                (Pop.INK and 0xFFFFFF) or ((a * 255).toInt() shl 24), dp(9f) * scale)
+            c.restore()
         }
         if (flashLife > 0) {
             p.style = Paint.Style.FILL
@@ -301,7 +300,7 @@ class GameHudView(context: Context) : View(context) {
             p.shader = null
         }
         // 上部の読みやすさ用グラデーション
-        p.shader = LinearGradient(0f, 0f, 0f, dp(120f), Color.argb(170, 0, 0, 0), 0, Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(0f, 0f, 0f, dp(120f), Color.argb(170, 40, 16, 80), 0, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w, dp(120f), p)
         p.shader = null
     }
@@ -314,19 +313,18 @@ class GameHudView(context: Context) : View(context) {
         val sc = 1f + 0.18f * counterPop
         c.save()
         c.scale(sc, sc, x, dp(30f))
-        c.drawText((if (dayActive) "今日 ¥ " else "¥ ") + fmtMoney(if (dayActive) todayEarned else shownMoney), x, dp(42f), tp)
+        Pop.outlined(c, (if (dayActive) "今日 ¥ " else "¥ ") + fmtMoney(if (dayActive) todayEarned else shownMoney), x, dp(42f), tp,
+            if (frenzyOn && (time * 8).toInt() % 2 == 0) Color.WHITE else Pop.YELLOW, Pop.INK, dp(7f))
         c.restore()
         tp.textSize = dp(15f)
-        tp.color = if (incomePerSec >= 0) Pal.GREEN else Pal.RED
         val inc = (if (incomePerSec >= 0) "+" else "") + fmtMoney(incomePerSec) + " /s"
-        c.drawText(inc, x, dp(64f), tp)
+        Pop.outlined(c, inc, x, dp(64f), tp, if (incomePerSec >= 0) Pop.MINT else Pop.RED, Pop.INK, dp(4f))
         tp.color = Pal.DIM
         val auto = if (autoLevel > 0) "  AUTO Lv$autoLevel" else ""
         c.drawText("×%.2f  ★$stars".format(multiplier) + auto, x + tp.measureText(inc) + dp(12f), dp(64f), tp)
         tp.textAlign = Paint.Align.RIGHT
         tp.textSize = dp(16f)
-        tp.color = Pal.TEXT
-        c.drawText(engineName, w - dp(12f), dp(28f), tp)
+        Pop.outlined(c, engineName, w - dp(12f), dp(28f), tp, Color.WHITE, Pop.INK, dp(4.5f))
         tp.textSize = dp(12f)
         tp.color = Pal.DIM
         val line = if (isTurbine) "%.0f kW  推力 %.1f kN  EGT".format(powerKw, thrustKn)
@@ -396,19 +394,21 @@ class GameHudView(context: Context) : View(context) {
     private fun drawDayTop(c: Canvas, w: Float) {
         val cx = w * 0.5f
         tp.textAlign = Paint.Align.CENTER
-        tp.textSize = dp(30f)
+        tp.textSize = dp(32f)
         val t = timeLeft.coerceAtLeast(0f)
-        tp.color = if (t < 10 && (time * 4).toInt() % 2 == 0) Pal.RED else Pal.TEXT
-        c.drawText("%d:%02d".format(t.toInt() / 60, t.toInt() % 60), cx, dp(38f), tp)
+        Pop.outlined(c, "%d:%02d".format(t.toInt() / 60, t.toInt() % 60), cx, dp(38f), tp,
+            if (t < 10 && (time * 4).toInt() % 2 == 0) Pop.RED else Color.WHITE, Pop.INK, dp(7f))
         // 残り時間バー
         val bw = dp(140f)
-        rect.set(cx - bw / 2, dp(46f), cx + bw / 2, dp(50f))
+        rect.set(cx - bw / 2, dp(45f), cx + bw / 2, dp(52f))
         p.style = Paint.Style.FILL
-        p.color = Color.argb(150, 40, 44, 52)
-        c.drawRect(rect, p)
-        rect.right = rect.left + bw * (t / duration).coerceIn(0f, 1f)
-        p.color = if (t < 10) Pal.RED else Pal.AMBER
-        c.drawRect(rect, p)
+        p.color = Pop.INK
+        c.drawRoundRect(rect, dp(4f), dp(4f), p)
+        rect.inset(dp(1.5f), dp(1.5f))
+        rect.right = rect.left + (bw - dp(3f)) * (t / duration).coerceIn(0f, 1f)
+        p.shader = LinearGradient(rect.left, 0f, rect.left + bw, 0f, if (t < 10) Pop.RED else Pop.PINK, Pop.YELLOW, Shader.TileMode.CLAMP)
+        c.drawRoundRect(rect, dp(3f), dp(3f), p)
+        p.shader = null
         tp.textSize = dp(12f)
         tp.color = Pal.DIM
         c.drawText("DAY $day" + if (eventLabel.isNotEmpty()) "  ·  $eventLabel" else "", cx, dp(66f), tp)
@@ -423,18 +423,19 @@ class GameHudView(context: Context) : View(context) {
         for (o in orders) {
             rect.set(x0, y, x0 + cw, y + ch)
             p.style = Paint.Style.FILL
-            p.color = if (o.done) Color.argb(200, 30, 70, 40) else Color.argb(185, 16, 18, 24)
-            c.drawRoundRect(rect, dp(6f), dp(6f), p)
+            p.color = if (o.done) Color.argb(225, 30, 120, 90) else Color.argb(215, 52, 38, 112)
+            c.drawRoundRect(rect, dp(12f), dp(12f), p)
             p.style = Paint.Style.STROKE
-            p.strokeWidth = dp(1f)
-            p.color = if (o.done) Pal.GREEN else if (o.stars >= 3) Pal.VIOLET else Pal.BORDER
-            c.drawRoundRect(rect, dp(6f), dp(6f), p)
+            p.strokeWidth = dp(2f)
+            p.color = if (o.done) Pop.MINT else if (o.stars >= 2) Pop.PURPLE else Pop.PINK
+            c.drawRoundRect(rect, dp(12f), dp(12f), p)
             tp.textAlign = Paint.Align.LEFT
             tp.textSize = dp(11.5f)
             tp.color = if (o.done) Pal.GREEN else Pal.TEXT
-            c.drawText(if (o.done) "✓ ${o.title}" else o.title, x0 + dp(7f), y + dp(13f), tp)
+            tp.color = Color.WHITE
+            c.drawText(if (o.done) "✓ ${o.title}" else o.title, x0 + dp(9f), y + dp(13f), tp)
             tp.textAlign = Paint.Align.RIGHT
-            tp.color = Pal.AMBER
+            tp.color = Pop.YELLOW
             c.drawText("¥${fmtMoney(o.reward)} ★${o.stars}", x0 + cw - dp(7f), y + dp(13f), tp)
             tp.textAlign = Paint.Align.LEFT
             tp.textSize = dp(9.5f)
@@ -444,10 +445,11 @@ class GameHudView(context: Context) : View(context) {
             if (d != o.detail) d += "…"
             c.drawText(d, x0 + dp(7f), y + dp(25f), tp)
             p.style = Paint.Style.FILL
-            p.color = Color.argb(150, 50, 54, 64)
-            c.drawRect(x0 + dp(7f), y + ch - dp(9f), x0 + cw - dp(7f), y + ch - dp(5f), p)
-            p.color = if (o.done) Pal.GREEN else Pal.CYAN
-            c.drawRect(x0 + dp(7f), y + ch - dp(9f), x0 + dp(7f) + (cw - dp(14f)) * o.progress.coerceIn(0f, 1f), y + ch - dp(5f), p)
+            p.color = Pop.INK
+            c.drawRoundRect(x0 + dp(7f), y + ch - dp(10f), x0 + cw - dp(7f), y + ch - dp(4f), dp(3f), dp(3f), p)
+            p.shader = LinearGradient(x0, 0f, x0 + cw, 0f, Pop.CYAN, Pop.MINT, Shader.TileMode.CLAMP)
+            c.drawRoundRect(x0 + dp(8f), y + ch - dp(9f), x0 + dp(8f) + (cw - dp(16f)) * o.progress.coerceIn(0f, 1f), y + ch - dp(5f), dp(2f), dp(2f), p)
+            p.shader = null
             y += ch + dp(4f)
         }
     }
@@ -478,8 +480,11 @@ class GameHudView(context: Context) : View(context) {
         rect.set(cx - r, cy - r, cx + r, cy + r)
         val maxRpm = redline * 1.08f
         fun ang(v: Float) = 135f + 270f * (v / maxRpm).coerceIn(0f, 1f)
+        sp.strokeWidth = dp(14f)
+        sp.color = Pop.INK
+        c.drawArc(rect, 135f, 270f, false, sp)
         sp.strokeWidth = dp(10f)
-        sp.color = Color.argb(160, 30, 34, 40)
+        sp.color = Pop.CARD
         c.drawArc(rect, 135f, 270f, false, sp)
         if (dayActive && bandWidth > 0f) {
             // ターゲット帯 (動く)。針が入っていると光る
@@ -496,7 +501,7 @@ class GameHudView(context: Context) : View(context) {
             sp.color = Color.argb(200, 80, 210, 120)
             c.drawArc(rect, ang(redline * sweetLo), ang(redline * sweetHi) - ang(redline * sweetLo), false, sp)
         }
-        sp.color = Color.argb(200, 235, 64, 52)
+        sp.color = Pop.PINK
         c.drawArc(rect, ang(redline), ang(maxRpm) - ang(redline), false, sp)
         val inSweet = if (dayActive) inBand else rpm >= redline * sweetLo && rpm <= redline * sweetHi
         sp.strokeWidth = dp(4f)
@@ -533,8 +538,7 @@ class GameHudView(context: Context) : View(context) {
         }
         tp.textAlign = Paint.Align.CENTER
         tp.textSize = r * 0.32f
-        tp.color = Pal.TEXT
-        c.drawText("%,d".format(rpm.toInt()), cx, cy + r * 0.45f, tp)
+        Pop.outlined(c, "%,d".format(rpm.toInt()), cx, cy + r * 0.45f, tp, Color.WHITE, Pop.INK, r * 0.07f)
         tp.textSize = r * 0.14f
         tp.color = Pal.DIM
         c.drawText(if (isTurbine) "N2 rpm" else "rpm", cx, cy + r * 0.64f, tp)
@@ -571,22 +575,20 @@ class GameHudView(context: Context) : View(context) {
 
     private fun drawVBar(c: Canvas, x: Float, bottom: Float, hgt: Float, frac: Float, col: Int, label: String, value: String) {
         val bw = dp(16f)
-        rect.set(x - bw / 2, bottom - hgt, x + bw / 2, bottom)
+        rect.set(x - bw / 2 - dp(2f), bottom - hgt - dp(2f), x + bw / 2 + dp(2f), bottom + dp(2f))
         p.style = Paint.Style.FILL
-        p.color = Color.argb(170, 20, 22, 28)
-        c.drawRoundRect(rect, dp(4f), dp(4f), p)
+        p.color = Pop.INK
+        c.drawRoundRect(rect, bw, bw, p)
         val f = frac.coerceIn(0f, 1f)
         rect.set(x - bw / 2 + dp(2f), bottom - dp(2f) - (hgt - dp(4f)) * f, x + bw / 2 - dp(2f), bottom - dp(2f))
         p.shader = LinearGradient(0f, bottom, 0f, bottom - hgt, (col and 0xFFFFFF) or 0x80000000.toInt(), col, Shader.TileMode.CLAMP)
-        c.drawRoundRect(rect, dp(3f), dp(3f), p)
+        c.drawRoundRect(rect, bw / 2, bw / 2, p)
         p.shader = null
         tp.textAlign = Paint.Align.CENTER
-        tp.textSize = dp(10f)
-        tp.color = Pal.DIM
-        c.drawText(label, x, bottom + dp(12f), tp)
-        tp.color = col
-        tp.textSize = dp(11f)
-        c.drawText(value, x, bottom - hgt - dp(5f), tp)
+        tp.textSize = dp(10.5f)
+        Pop.outlined(c, label, x, bottom + dp(14f), tp, Pop.SUB, Pop.INK, dp(3f))
+        tp.textSize = dp(12f)
+        Pop.outlined(c, value, x, bottom - hgt - dp(6f), tp, col, Pop.INK, dp(3.5f))
     }
 
     private fun drawRace(c: Canvas, w: Float, h: Float) {

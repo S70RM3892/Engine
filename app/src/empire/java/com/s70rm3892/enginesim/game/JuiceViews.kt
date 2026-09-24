@@ -50,14 +50,14 @@ class NitroButton(context: Context) : View(context) {
             down -> Color.rgb(40, 60, 110)
             active > 0f -> Color.rgb(40, 80, 170)
             ready -> Color.rgb(34, 60, 130)
-            else -> Color.rgb(24, 28, 38)
+            else -> Pop.CARD
         }
         c.drawCircle(cx, cy, rad, p)
         // ゲージ (円周)
         p.style = Paint.Style.STROKE
         p.strokeWidth = dp(6f)
         p.strokeCap = Paint.Cap.ROUND
-        p.color = Color.argb(120, 60, 70, 90)
+        p.color = Pop.INK
         r.set(cx - rad + dp(4f), cy - rad + dp(4f), cx + rad - dp(4f), cy + rad - dp(4f))
         c.drawArc(r, 0f, 360f, false, p)
         p.color = if (active > 0f) Color.rgb(170, 210, 255) else Color.rgb(90, 160, 255)

@@ -19,6 +19,7 @@ import org.json.JSONObject
 class GameActivity : Activity() {
     private lateinit var viewport: Viewport
     private lateinit var game: GameController
+    private val bgm = BgmPlayer()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +36,8 @@ class GameActivity : Activity() {
         game = GameController(this, NativeBridge, source, GameController.prefsStore(this))
         game.onAutoOrbit = { NativeBridge.setAutoOrbit(it) }
         game.onEffects = { NativeBridge.setEffects(it) }
+        game.bgm = bgm.synth
+        game.onBgmToggle = { on -> if (on) bgm.start() else bgm.stop() }
         game.buildInto(root, viewportHost)
         setContentView(root)
         hideSystemBars()
@@ -47,10 +50,12 @@ class GameActivity : Activity() {
         NativeBridge.setVolume(0.9f)
         NativeBridge.startAudio()
         game.start()
+        if (game.state.settings.bgmOn) bgm.start()
     }
 
     override fun onPause() {
         game.stop()
+        bgm.stop()
         NativeBridge.stopAudio()
         viewport.onPause()
         super.onPause()

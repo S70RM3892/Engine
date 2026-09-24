@@ -46,45 +46,58 @@ class ShopRow(context: Context) : View(context) {
     fun refresh() = invalidate()
 
     override fun onDraw(c: Canvas) {
-        r.set(dp(2f), dp(2f), width - dp(2f), height - dp(2f))
-        p.style = Paint.Style.FILL
-        p.color = when {
-            down -> Pal.BORDER
-            current -> Color.rgb(40, 52, 44)
-            else -> Pal.PANEL_HI
+        val sc = if (down) 0.97f else 1f
+        c.save()
+        c.scale(sc, sc, width / 2f, height / 2f)
+        r.set(dp(3f), dp(3f), width - dp(3f), height - dp(3f))
+        val base = when {
+            current -> Pop.darker(Pop.MINT, 0.55f)
+            affordable -> Pop.CARD_HI
+            else -> Pop.CARD
         }
-        c.drawRoundRect(r, dp(6f), dp(6f), p)
+        // カード (下に厚み)
+        p.style = Paint.Style.FILL
+        p.shader = null
+        p.color = Pop.darker(base, 0.45f)
+        c.drawRoundRect(r.left, r.top + dp(3f), r.right, r.bottom, dp(14f), dp(14f), p)
+        p.shader = android.graphics.LinearGradient(0f, r.top, 0f, r.bottom, Pop.lighter(base, 0.12f), base, android.graphics.Shader.TileMode.CLAMP)
+        c.drawRoundRect(r.left, r.top, r.right, r.bottom - dp(3f), dp(14f), dp(14f), p)
+        p.shader = null
         if (glow > 0) {
-            p.color = (accent and 0xFFFFFF) or ((glow * 140).toInt() shl 24)
-            c.drawRoundRect(r, dp(6f), dp(6f), p)
+            p.color = (accent and 0xFFFFFF) or ((glow * 150).toInt() shl 24)
+            c.drawRoundRect(r, dp(14f), dp(14f), p)
             glow = max(0f, glow - 0.05f)
             postInvalidateOnAnimation()
         }
-        p.style = Paint.Style.STROKE
-        p.strokeWidth = dp(1.5f)
-        p.color = when {
-            current -> Pal.GREEN
-            affordable -> accent
-            else -> Pal.BORDER
-        }
-        c.drawRoundRect(r, dp(6f), dp(6f), p)
+        // 左の色帯
+        p.color = when { current -> Pop.MINT; affordable -> accent; else -> Pop.darker(accent, 0.5f) }
+        c.drawRoundRect(r.left, r.top, r.left + dp(7f), r.bottom - dp(3f), dp(4f), dp(4f), p)
 
-        val left = dp(10f)
-        tTitle.color = if (locked && !affordable) Pal.DIM else Pal.TEXT
-        c.drawText(title, left, dp(21f), tTitle)
-        tSub.color = Pal.DIM
-        c.drawText(subtitle, left, dp(37f), tSub)
-        tPrice.color = if (affordable) accent else Pal.DIM
-        c.drawText(price, width - dp(10f), dp(21f), tPrice)
+        val left = dp(16f)
+        tTitle.color = if (locked && !affordable) Pop.SUB else Color.WHITE
+        c.drawText(title, left, dp(22f), tTitle)
+        tSub.color = Pop.SUB
+        var sub = subtitle
+        val maxW = width - left - dp(110f)
+        while (sub.length > 2 && tSub.measureText(sub) > maxW) sub = sub.dropLast(2)
+        if (sub != subtitle) sub += "…"
+        c.drawText(sub, left, dp(38f), tSub)
+        // 価格のカプセル
+        val pw = tPrice.measureText(price) + dp(18f)
+        val pr = android.graphics.RectF(width - dp(10f) - pw, dp(9f), width - dp(10f), dp(33f))
+        p.color = if (affordable) accent else Pop.darker(Pop.CARD, 0.3f)
+        c.drawRoundRect(pr, dp(12f), dp(12f), p)
+        tPrice.color = if (affordable) Color.WHITE else Pop.SUB
+        c.drawText(price, pr.right - dp(9f), pr.bottom - dp(7f), tPrice)
         if (maxLevel > 0) {
             val bw = (width - left * 2)
             val seg = bw / maxLevel
-            p.style = Paint.Style.FILL
             for (i in 0 until maxLevel) {
-                p.color = if (i < level) accent else Color.argb(90, 90, 96, 110)
-                c.drawRect(left + i * seg + dp(1f), height - dp(11f), left + (i + 1) * seg - dp(1f), height - dp(7f), p)
+                p.color = if (i < level) Pop.YELLOW else Color.argb(90, 200, 190, 240)
+                c.drawRoundRect(left + i * seg + dp(1.5f), height - dp(13f), left + (i + 1) * seg - dp(1.5f), height - dp(8f), dp(3f), dp(3f), p)
             }
         }
+        c.restore()
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
