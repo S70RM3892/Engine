@@ -26,7 +26,7 @@ class BalanceSimTest {
         private var lastThr = 0.0
         fun step(dt: Double, thr: Double, cut: Boolean): Sample {
             val red = prof.redline
-            val target = if (cut) 0.0 else prof.idle + thr * (0.97 * red - prof.idle) + if (thr > 0.95) 0.06 * red else 0.0
+            val target = if (cut) prof.idle * 0.5 else prof.idle + thr * (0.92 * red - prof.idle)
             rpm += (target - rpm) * min(1.0, dt / 0.35)
             val frac = rpm / red
             val full = prof.refPowerKw / 0.85
@@ -45,7 +45,9 @@ class BalanceSimTest {
         val red = r.profile.redline
         if (r.heat > 0.82) return 0.0
         val o = r.orders.firstOrNull { !it.done }
-        fun toward(target: Double) = (0.5 + 3.0 * (target - rpm) / red).coerceIn(0.0, 1.0)
+        // 帯に対応するペダル位置 (フィードフォワード) + 微修正。平均的なプレイヤーとして ±10% の揺らぎ
+        fun toward(target: Double) = ((target - r.profile.idle) / (0.92 * red - r.profile.idle) + 1.5 * (target - rpm) / red +
+            0.1 * kotlin.math.sin(t * 1.7)).coerceIn(0.0, 1.0)
         return when (o?.kind) {
             OrderKind.HOLD_BAND, OrderKind.VIP_LIMIT -> toward((o.a + o.b) / 2)
             OrderKind.REDLINE -> toward(red * 0.975)

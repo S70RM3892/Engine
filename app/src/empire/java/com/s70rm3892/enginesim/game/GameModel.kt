@@ -101,7 +101,7 @@ object GameRoster {
     const val ROOT = "tiller"
 
     /** 価格の倍率 (目安: 1 つ手前のエンジンで数日働くと買える。最初の分岐は早めに選べるよう半分) */
-    fun priceScale(depth: Int) = if (depth <= 1) 2.0 else 5.0
+    fun priceScale(depth: Int) = if (depth <= 1) 2.0 else 9.0
 
     private fun node(id: String, name: String, lane: Int, depth: Int, price: Double, est: Double, vararg parents: String) =
         GameEngineDef(id, name, price * priceScale(depth), catalogId = id, lane = lane, depth = depth, parents = parents.toList(), estNet = est)

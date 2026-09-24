@@ -267,6 +267,12 @@ class RunSession(
         private set
 
     private var fever = false
+    /** 今日のオーバーヒート回数 (回を重ねるほど停止時間とダメージが増える) */
+    var overheatCount = 0
+        private set
+    /** 熱 72〜92% を保っている (攻めた運転ボーナス ×1.25) */
+    var hot = false
+        private set
     private var nextMilestone = 1000.0
     private var lastAfterfire = -1
     private var wasLimiter = false
@@ -387,14 +393,14 @@ class RunSession(
         updateBand(dt)
         val nitroOn = nitroTime > 0
         val comboFrac = ((combo - 1) / max(0.1, perks.comboCap - 1)).coerceIn(0.0, 1.0)
-        bandWidth = (0.10 + perks.sweetWiden) * (if (slowEngine) 1.7 else 1.0) * (1.0 - 0.3 * comboFrac) * (if (nitroOn) 1.5 else 1.0)
+        bandWidth = (0.13 + perks.sweetWiden) * (if (slowEngine) 1.7 else 1.0) * (1.0 - 0.3 * comboFrac) * (if (nitroOn) 1.5 else 1.0)
         inBand = kotlin.math.abs(frac - bandCenter) <= bandWidth / 2 && outKw > 0.3
         if (s.limiter && !wasLimiter) {
             if (combo > 1.3) out += Ev.Text("COMBO BREAK", COLOR_RED)
             combo = 1.0
         }
         val gain = 0.22 * perks.comboRate * (if (nitroOn) 2.0 else 1.0)
-        combo = if (inBand) min(perks.comboCap, combo + dt * gain) else max(1.0, combo - dt * 0.5)
+        combo = if (inBand) min(perks.comboCap, combo + dt * gain) else max(1.0, combo - dt * 0.25)
         if (inBand && !wasSweet) out += Ev.SweetIn
         if (inBand) {
             sweetSeconds += dt
@@ -433,8 +439,12 @@ class RunSession(
             }
         }
 
-        val boost = (if (nitroOn) 2.0 else 1.0) * (if (frenzyTime > 0) 4.0 else 1.0)
-        val income = (outKw * powerPrice * combo * boost - fuelKw * fuelPrice) * multiplier
+        // 熱をぎりぎりで保つ攻めた運転はボーナス。越えてオーバーヒートすると重いペナルティ
+        hot = overheat <= 0 && inBand && heat in HOT_LO..HOT_HI
+        val boost = (if (nitroOn) 2.0 else 1.0) * (if (frenzyTime > 0) 4.0 else 1.0) * (if (hot) HOT_BONUS else 1.0)
+        // 帯 = 電力会社の指令値。指令どおりの回転で出した電力は満額、外れた電力は買い叩かれる
+        val dispatch = if (inBand) 1.0 else OFF_BAND_PRICE
+        val income = (outKw * powerPrice * dispatch * combo * boost - fuelKw * fuelPrice) * multiplier
         earned += income * dt
         incomeRate += (income - incomeRate) * min(1.0, dt / 1.2)
         while (earned >= nextMilestone) { out += Ev.Milestone(nextMilestone); nextMilestone *= 10 }
@@ -461,22 +471,30 @@ class RunSession(
         if (profile.isElectric) heatMul *= 0.6 else if (profile.cycle.startsWith("diesel")) heatMul *= 0.8
         if (nitroOn) heatMul *= 1.8
         val dmgMul = perks.damageMul * (if (event == DayEvent.INSPECTION) 2.0 else 1.0)
+        // 帯の中 (効率の良い回転) は発熱が少なく、外すと多い
+        heatMul *= if (inBand) 0.7 else 1.15
         if (overheat > 0) {
+            // 焼けたエンジンはゆっくりとしか冷えず、55% までしか下がらない (オーバーヒートは冷却の近道にならない)
             overheat -= dt
-            heat = max(0.0, heat - dt * 0.2)
+            heat = max(0.55, heat - dt * 0.06)
             if (overheat <= 0) { overheat = 0.0; out += Ev.Text("再始動", COLOR_GREEN) }
         } else {
-            val cool = 0.035 + if (throttle < 0.3) 0.05 else 0.0
+            // 自分でアクセルを抜けば素早く冷える
+            val cool = 0.035 + if (throttle < 0.3) 0.10 else 0.0
             heat = (heat + dt * (0.07 * throttle * throttle * (0.5 + frac) * heatMul - cool)).coerceIn(0.0, 1.0)
             if (heat >= 1.0) {
-                overheat = perks.overheatStop
+                overheatCount++
+                val n = overheatCount - 1
+                overheat = perks.overheatStop + 2.0 * n
                 combo = 1.0
-                damage(20.0 * dmgMul, out)
+                nitro = 0.0
+                nitroReadyShown = false
+                damage(20.0 * Math.pow(1.5, n.toDouble()) * dmgMul, out)
                 out += Ev.Overheat
             }
         }
         if (s.limiter) damage(6.0 * dt * dmgMul, out)
-        if (heat > 0.9) damage(3.0 * dt * dmgMul, out)
+        if (heat > 0.94) damage(3.0 * dt * dmgMul, out)
         // ノッキング: 低回転で全開 (ラグ) を続けるとカンカン鳴って耐久が減る
         val knockProne = !profile.isElectric && !profile.isTurbine && profile.cycle != "steam" && profile.cycle != "stirling"
         if (knockProne && throttle > 0.85 && frac < 0.4 && overheat <= 0) knockTimer += dt else knockTimer = max(0.0, knockTimer - 2 * dt)
@@ -589,6 +607,10 @@ class RunSession(
         const val COLOR_GREEN = 0xFF50D278.toInt()
         const val COLOR_ORANGE = 0xFFFF7828.toInt()
         const val COLOR_GOLD = 0xFFFFC83C.toInt()
+        const val HOT_LO = 0.72
+        const val HOT_HI = 0.92
+        const val HOT_BONUS = 1.25
+        const val OFF_BAND_PRICE = 0.6
         const val COLOR_CYAN = 0xFF40C8E6.toInt()
         const val COLOR_VIOLET = 0xFFAA78FF.toInt()
 

@@ -71,6 +71,8 @@ class GameHudView(context: Context) : View(context) {
     var frenzyOn = false
     var knocking = false
     var fever = false
+    var hot = false
+    var overheatCount = 0
     /** 画面下のヒント (初日のチュートリアルなど)。空なら非表示 */
     var tip = ""
     /** 中央の大きなカウントダウン ("3", "2", "1", "GO!") */
@@ -509,6 +511,20 @@ class GameHudView(context: Context) : View(context) {
         sp.strokeWidth = dp(3f)
         sp.color = Color.WHITE
         c.drawLine(cx, cy, cx + (r - dp(6f)) * cos(a).toFloat(), cy + (r - dp(6f)) * sin(a).toFloat(), sp)
+        // 帯の外は売電単価 60%、熱ボーナス、次のオーバーヒートの重さ
+        tp.textAlign = Paint.Align.CENTER
+        tp.textSize = r * 0.15f
+        if (dayActive) {
+            when {
+                hot -> { tp.color = Color.rgb(255, 120, 40); c.drawText("HOT ×1.25", cx, cy - r * 0.05f, tp) }
+                !inBand -> { tp.color = Pal.DIM; c.drawText("帯の外 売電 60%", cx, cy - r * 0.05f, tp) }
+            }
+            if (overheatCount > 0) {
+                tp.color = Color.rgb(255, 110, 90)
+                tp.textSize = r * 0.13f
+                c.drawText("OH ×$overheatCount 次は停止+${2 * overheatCount}秒", cx, cy + r * 0.85f, tp)
+            }
+        }
         if (knocking && (time * 10).toInt() % 2 == 0) {
             tp.textAlign = Paint.Align.CENTER
             tp.color = Pal.RED

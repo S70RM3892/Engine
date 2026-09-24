@@ -870,11 +870,14 @@ class GameController(
                 hud.flash(Pal.GREEN)
                 haptic(true)
             }
-            RunSession.Ev.Overheat -> { hud.popup("OVERHEAT!", Pal.RED); hud.flash(Pal.RED); hud.shake(12f); haptic(true) }
+            RunSession.Ev.Overheat -> {
+                hud.popup("OVERHEAT!", Pal.RED); hud.flash(Pal.RED); hud.shake(12f); haptic(true)
+                showTip("overheat", "オーバーヒートは回を重ねるほど停止が長く、ダメージも増える。熱 72〜92% で抜くのが上手い運転 (HOT ×1.25)", 8.0)
+            }
             RunSession.Ev.Blown -> { hud.popup("BLOWN!", Pal.RED); hud.flash(Color.WHITE); hud.burstConfetti(80); hud.shake(24f); haptic(true) }
             RunSession.Ev.SweetIn -> {
                 hud.floatText("IN!", Pal.CYAN)
-                if (state.stats.days < 3) showTip("band", "帯の中にいるとコンボが増える。外れると下がる。帯は動くぞ", 6.0)
+                if (state.stats.days < 3) showTip("band", "帯 = 電力会社の指令。帯の中で出した電力は満額、外だと 6 割。コンボも帯の中だけ", 7.0)
             }
             is RunSession.Ev.Groove -> {
                 val (txt, col) = when (e.level) { 1 -> "NICE!" to Pal.CYAN; 2 -> "GREAT!!" to Pal.VIOLET; else -> "PERFECT!!!" to Pal.AMBER }
@@ -925,6 +928,8 @@ class GameController(
         hud.frenzyOn = r.frenzyTime > 0
         hud.knocking = r.knocking
         hud.fever = r.combo >= state.perks.comboCap - 1e-6
+        hud.hot = r.hot
+        hud.overheatCount = r.overheatCount
         nitroBtn.level = r.nitro.toFloat()
         nitroBtn.active = if (r.nitroTime > 0) (r.nitroTime / state.perks.nitroSeconds).toFloat() else 0f
         // 金のボルト
