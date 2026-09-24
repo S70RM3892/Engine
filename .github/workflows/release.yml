@@ -1,11 +1,16 @@
 name: Release
 
-# v* タグを push すると、シミュレータとゲームの 2 つの APK をビルドして GitHub Release に公開する。
+# シミュレータとゲームの 2 つの APK をビルドして GitHub Release に公開する。
+# 起動: v* タグの push / docs/RELEASE_NOTES.md を変更した push / 手動実行。
+# タグ名は app/build.gradle.kts の versionName から決める (v<versionName>)。タグが無ければリリース作成時に作る。
 # 署名: リポジトリ Secrets (SIGNING_KEYSTORE_BASE64 / SIGNING_STORE_PASSWORD / SIGNING_KEY_ALIAS /
 # SIGNING_KEY_PASSWORD) があればその鍵、無ければ Gradle のデバッグ鍵。
 on:
   push:
     tags: ["v*"]
+    branches: [main, "claude/**"]
+    paths: ["docs/RELEASE_NOTES.md"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,6 +20,10 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Version
+        run: |
+          v=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
+          echo "TAG=v$v" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -45,14 +54,16 @@ jobs:
       - name: Collect
         run: |
           mkdir dist
-          cp app/build/outputs/apk/simulator/release/app-simulator-release.apk "dist/EngineSimulator-${GITHUB_REF_NAME}.apk"
-          cp app/build/outputs/apk/empire/release/app-empire-release.apk "dist/EngineEmpire-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/simulator/release/app-simulator-release.apk "dist/EngineSimulator-${TAG}.apk"
+          cp app/build/outputs/apk/empire/release/app-empire-release.apk "dist/EngineEmpire-${TAG}.apk"
           (cd dist && sha256sum *.apk > SHA256SUMS.txt)
           cp docs/RELEASE_NOTES.md dist/notes.md
           printf '\n---\nSigned with: %s\n' "$SIGNED_WITH" >> dist/notes.md
       - uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ env.TAG }}
           body_path: dist/notes.md
           files: |
             dist/*.apk
