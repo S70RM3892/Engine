@@ -1,19 +1,18 @@
 package com.s70rm3892.enginesim.game
 
 import org.json.JSONObject
-import kotlin.math.floor
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
-import kotlin.math.sqrt
 
 /**
- * 「ENGINE EMPIRE」— エンジンの物理特性をそのまま使うインクリメンタルゲームのモデル (Android 非依存)。
+ * 「ENGINE EMPIRE」— エンジンの物理特性をそのまま使う、1 日単位のサイクル型インクリメンタルゲームのモデル (Android 非依存)。
  *
- * 収入 = ダイナモ (またはプロペラ) が吸収した実出力 [kW] × 単価 × 倍率
+ * 昼 (シフト): 制限時間内にダイナモでエンジンを回して稼ぐ。依頼・熱・耐久・日替わりイベントがある (RunSession)。
+ * 夜 (ガレージ): 稼いだ ¥ と ★ で強化ボード・チューン・仕様・新エンジンを選んで買う。全部は買えないので迷う。
+ *
+ * 収入 = ダイナモ (またはプロペラ) が吸収した実出力 [kW] × 単価 × コンボ
  * 支出 = 燃料 (電動機は電力) の投入熱量 [kW] × 燃料単価
- * → 熱効率の良いエンジンほど儲かり、過給・高回転はリスク (熱) と引き換えに大出力。
  */
 object GameRules {
     const val POWER_PRICE = 1.0        // ¥ / (kW·s)
@@ -21,16 +20,15 @@ object GameRules {
     const val ELECTRIC_PRICE = 0.35    // 電動機の電力単価 (燃料より高いが効率が高い)
     const val COAL_PRICE = 0.05        // 蒸気機関の石炭 (安いが効率が低い)
     const val THRUST_SPEED = 250.0     // ジェット: 推力 × 250m/s (巡航速度) を推進仕事率とみなす
-    const val OFFLINE_RATE = 0.5       // オフライン収入の割合
-    const val OFFLINE_CAP_S = 4 * 3600.0
     const val COMBO_MAX = 3.0
     const val SWEET_LO = 0.72          // コンボが溜まる回転域 (レッドライン比)
     const val SWEET_HI = 0.95
+    const val SHIFT_BASE_S = 50.0      // 1 日のシフト時間
+    const val HP_BASE = 100.0          // エンジン耐久
+    const val BLOWN_KEEP = 0.5         // ブロー時に残る今日の稼ぎの割合
 
-    fun tpFromEarnings(totalEarned: Double): Int = floor(sqrt(max(0.0, totalEarned) / 1e6)).toInt()
-    fun prestigeMultiplier(tp: Int): Double = 1.0 + 0.1 * tp
-    /** 解放済みエンジン 1 台ごとに全体収入 +10% (コレクション・ボーナス) */
-    fun collectionMultiplier(unlocked: Int): Double = 1.0 + 0.10 * max(0, unlocked - 1)
+    /** 解放済みエンジン 1 台ごとに全体収入 +5% (コレクション・ボーナス) */
+    fun collectionMultiplier(unlocked: Int): Double = 1.0 + 0.05 * max(0, unlocked - 1)
 }
 
 /** アップグレードの種類。familyMask で対象を絞る。 */
@@ -50,9 +48,8 @@ enum class UpgradeKind(
     CAMS("ハイカム&ポート研磨", "吸排気の流れ +6% → 高回転の充填効率", 10, 0.9, 1.4),
     LIGHTEN("軽量化&低フリクション", "摩擦 −5% / 慣性 −6% → 吹け上がり", 8, 0.75, 1.4),
     REV("レブリミット上昇", "レッドライン +3%", 8, 1.0, 1.5),
-    BOOST("過給機", "Lv1 でターボ装着、以降ブースト +0.2bar", 8, 2.0, 1.55),
+    BOOST("過給機", "Lv1 でターボ装着、以降ブースト +0.2bar (要: 過給ショップ)", 8, 2.0, 1.55),
     EXHAUST("排気チューン", "背圧 −8% → 高回転出力と排気音", 6, 0.5, 1.4),
-    RADIATOR("大型ラジエーター", "冷却 +12% / 熱ゲージが冷えやすい", 10, 0.4, 1.3, recip = true, turbine = true, electric = true),
     CYLINDERS("気筒追加", "気筒数を増やす (直列+1 / V・水平対向+2)", 8, 6.0, 2.2),
     COMBUSTOR("燃焼器改良", "推力/軸出力 +8%", 10, 1.0, 1.45, recip = false, turbine = true),
     SPOOL("スプール応答", "加速ラグ −8%", 6, 0.8, 1.4, recip = false, turbine = true),
@@ -83,7 +80,10 @@ data class GameEngineDef(
             else -> 0
         }
     /** 価格ゼロのエンジンのアップグレード基準価格 */
-    val basePrice: Double get() = max(price, 150.0)
+    val basePrice: Double get() = max(price, 500.0)
+
+    /** 深い段のエンジンは ★ も必要 (工房と ★ を取り合う) */
+    val starCost: Int get() = if (depth >= 4) depth - 2 else 0
 }
 
 object GameRoster {
@@ -92,11 +92,19 @@ object GameRoster {
     /** ツリーの行 (系統) */
     val lanes = listOf("外燃", "単気筒", "直列", "過給", "ディーゼル", "電動", "ロータリー", "水平対向", "V型", "星型", "タービン")
 
+    /** 系統ごとに必要な工房 (強化ボードのノード)。null は最初から開いている */
+    val laneWorkshop: List<String?> = listOf(
+        "steamWorks", null, null, "turboShop", "dieselShop", "evLab", "rotaryShop", null, null, "hangar", "jetTest",
+    )
+
     /** ルート (耕運機) は直列の行に置く */
     const val ROOT = "tiller"
 
+    /** 価格の倍率 (目安: 1 つ手前のエンジンで数日働くと買える。最初の分岐は早めに選べるよう半分) */
+    fun priceScale(depth: Int) = if (depth <= 1) 2.0 else 4.0
+
     private fun node(id: String, name: String, lane: Int, depth: Int, price: Double, est: Double, vararg parents: String) =
-        GameEngineDef(id, name, price, catalogId = id, lane = lane, depth = depth, parents = parents.toList(), estNet = est)
+        GameEngineDef(id, name, price * priceScale(depth), catalogId = id, lane = lane, depth = depth, parents = parents.toList(), estNet = est)
 
     val engines: List<GameEngineDef> = listOf(
         GameEngineDef(ROOT, "耕運機 単気筒", 0.0,
@@ -152,115 +160,177 @@ object GameRoster {
     fun byKey(key: String) = byKeyMap[key] ?: engines.first()
     fun has(key: String) = key in byKeyMap
     fun children(key: String) = engines.filter { key in it.parents }
+}
 
-    /** 旧版 (一本道ロスター) のキー → 新しいツリーのキー */
-    val legacyKeys = mapOf(
-        "twin" to "i2_270", "rotary" to "wankel2_13b", "i4t" to "i4_20t", "flat6" to "b6_30", "pmsm" to "motor_pmsm",
-        "v8" to "v8_cross", "v12" to "v12_60", "radial" to "r9_r1820", "jumo" to "jumo205", "deltic" to "deltic18",
-    )
+/** エンジンの仕様 (1 台につき 1 つ。夜に選ぶ。互いに排他) */
+enum class EngineSpecialty(val label: String, val desc: String) {
+    NONE("標準", "特化なし"),
+    HIGH_REV("高回転仕様", "レッドライン +10%・吸気 +10%・慣性 −10%。スイートゾーンが上へ、熱 +15%。高回転系の依頼 ×2"),
+    TORQUE("低速トルク仕様", "ストローク +6%・レッドライン −5%。スイートゾーンが下へ。低回転/出力系の依頼 ×2"),
+    ECO("燃費仕様", "圧縮比 +1.0・燃料代 −15%。効率/電力量系の依頼 ×2"),
 }
 
 /** 1 エンジン分の進行状況 */
 class EngineProgress(val key: String) {
     val levels = mutableMapOf<UpgradeKind, Int>()
     var bestDragTime = 0.0
+    var specialty = EngineSpecialty.NONE
+    var bestPowerKw = 0.0      // 実測の最高出力 (依頼の目標値に使う)
+    var bestEff = 0.0          // 実測の最高効率
     fun level(u: UpgradeKind) = levels[u] ?: 0
 
     fun toJson() = JSONObject().apply {
         put("key", key)
         put("best", bestDragTime)
+        put("spec", specialty.name)
+        put("pmax", bestPowerKw)
+        put("emax", bestEff)
         put("levels", JSONObject().apply { levels.forEach { (k, v) -> put(k.name, v) } })
     }
 
     companion object {
         fun fromJson(o: JSONObject) = EngineProgress(o.getString("key")).apply {
             bestDragTime = o.optDouble("best", 0.0)
+            specialty = runCatching { EngineSpecialty.valueOf(o.optString("spec", "NONE")) }.getOrDefault(EngineSpecialty.NONE)
+            bestPowerKw = o.optDouble("pmax", 0.0)
+            bestEff = o.optDouble("emax", 0.0)
             val lv = o.optJSONObject("levels")
             lv?.keys()?.forEach { k -> runCatching { levels[UpgradeKind.valueOf(k)] = lv.getInt(k) } }
         }
     }
 }
 
+/** 累計の記録 (目標・実績の判定に使う) */
+class GameStats {
+    var days = 0
+    var totalEarned = 0.0
+    var bestDay = 0.0
+    var ordersDone = 0
+    var afterfires = 0
+    var sweetSeconds = 0.0
+    var blown = 0
+    var cleanDays = 0          // 無傷 (耐久満タン) で依頼 3 件以上
+    var bestDrag = 0.0
+
+    fun toJson() = JSONObject().apply {
+        put("days", days); put("total", totalEarned); put("bestDay", bestDay); put("orders", ordersDone)
+        put("af", afterfires); put("sweet", sweetSeconds); put("blown", blown); put("clean", cleanDays); put("drag", bestDrag)
+    }
+
+    fun read(o: JSONObject) {
+        days = o.optInt("days"); totalEarned = o.optDouble("total"); bestDay = o.optDouble("bestDay")
+        ordersDone = o.optInt("orders"); afterfires = o.optInt("af"); sweetSeconds = o.optDouble("sweet")
+        blown = o.optInt("blown"); cleanDays = o.optInt("clean"); bestDrag = o.optDouble("drag")
+    }
+}
+
 /** ゲーム全体の状態 (セーブ対象) */
 class GameState {
+    var day = 1
     var money = 0.0
-    var totalEarned = 0.0
-    var runEarned = 0.0           // 今回のプレステージ周回での獲得額
-    var techPoints = 0
-    var automation = 0            // 自動スロットル Lv (0..10)
-    var current = GameRoster.engines.first().key
-    val unlocked = mutableSetOf(GameRoster.engines.first().key)
+    var stars = 0
+    var current = GameRoster.ROOT
+    val unlocked = mutableSetOf(GameRoster.ROOT)
     val progress = mutableMapOf<String, EngineProgress>()
-    var lastSeenMs = 0L
-    var offlineRate = 0.0         // 自動運転時の平均純収入 [¥/s]
+    val board = mutableMapOf<String, Int>()          // 強化ボードのレベル
+    val goalsDone = mutableSetOf<String>()
+    val stats = GameStats()
+    var raceUsedDay = 0                              // その夜のゼロヨンを走った日
+    var nextEvent = DayEvent.NONE                    // 明日のイベント (夜のうちに予報される)
 
     fun prog(key: String) = progress.getOrPut(key) { EngineProgress(key) }
+    fun lv(node: String) = board[node] ?: 0
+    fun has(node: String) = lv(node) > 0
+    val perks: Perks get() = Perks(this)
 
-    /** ツリー上で解放可能か (未所持で、親のどれかを所持) */
+    /** 系統が工房で開いているか */
+    fun laneOpen(lane: Int): Boolean = GameRoster.laneWorkshop[lane]?.let { has(it) } ?: true
+
+    /** ツリー上で解放可能か (未所持で、親のどれかを所持し、系統の工房がある) */
     fun canUnlock(def: GameEngineDef): Boolean =
-        def.key !in unlocked && (def.parents.isEmpty() || def.parents.any { it in unlocked })
+        def.key !in unlocked && laneOpen(def.lane) && (def.parents.isEmpty() || def.parents.any { it in unlocked })
 
     /** 解放を試みる。成功したら true */
     fun unlock(def: GameEngineDef): Boolean {
-        if (!canUnlock(def) || money < def.price) return false
+        if (!canUnlock(def) || money < def.price || stars < def.starCost) return false
         money -= def.price
+        stars -= def.starCost
         unlocked += def.key
         return true
     }
-    val multiplier: Double get() = GameRules.prestigeMultiplier(techPoints) * GameRules.collectionMultiplier(unlocked.size)
+
+    val multiplier: Double get() = GameRules.collectionMultiplier(unlocked.size)
 
     fun upgradeCost(def: GameEngineDef, kind: UpgradeKind): Double {
         val lv = prog(def.key).level(kind)
         return def.basePrice * kind.costFactor * kind.growth.pow(lv.toDouble())
     }
 
-    fun automationCost(): Double = 400.0 * 6.0.pow(automation.toDouble())
+    /** チューンを買えるか (過給機は過給ショップが必要) */
+    fun tuneAvailable(kind: UpgradeKind): Boolean = kind != UpgradeKind.BOOST || has("turboShop")
 
-    fun pendingTechPoints(): Int = GameRules.tpFromEarnings(runEarned)
-
-    /** プレステージ (オーバーホール): 所持金/解放/アップグレードをリセットし技術ポイントを得る */
-    fun prestige(): Int {
-        val gain = pendingTechPoints()
-        if (gain <= 0) return 0
-        techPoints += gain
-        money = 0.0
-        runEarned = 0.0
-        automation = 0
-        unlocked.clear()
-        unlocked += GameRoster.engines.first().key
-        current = GameRoster.engines.first().key
-        progress.values.forEach { it.levels.clear() }
-        return gain
+    fun buyTune(def: GameEngineDef, kind: UpgradeKind): Boolean {
+        val p = prog(def.key)
+        if (!tuneAvailable(kind) || p.level(kind) >= kind.maxLevel) return false
+        val c = upgradeCost(def, kind)
+        if (money < c) return false
+        money -= c
+        p.levels[kind] = p.level(kind) + 1
+        return true
     }
 
-    /** オフライン収入 (前回終了時の自動運転の平均純収入 × 経過時間 × 50%, 最大 4 時間) */
-    fun collectOffline(nowMs: Long): Double {
-        if (lastSeenMs <= 0) return 0.0
-        val dt = min(GameRules.OFFLINE_CAP_S, max(0.0, (nowMs - lastSeenMs) / 1000.0))
-        val gain = offlineRate * dt * GameRules.OFFLINE_RATE
-        if (gain > 0) earn(gain)
-        return gain
+    /** 仕様の変更: 初回は ★2、以降の変更は ¥ (エンジン価格の 50%) */
+    fun specialtyCost(def: GameEngineDef): Pair<Int, Double> =
+        if (prog(def.key).specialty == EngineSpecialty.NONE) 2 to 0.0 else 0 to def.basePrice * 0.5
+
+    fun setSpecialty(def: GameEngineDef, s: EngineSpecialty): Boolean {
+        val p = prog(def.key)
+        if (p.specialty == s) return false
+        val (st, yen) = specialtyCost(def)
+        if (stars < st || money < yen) return false
+        stars -= st
+        money -= yen
+        p.specialty = s
+        return true
+    }
+
+    fun boardCost(n: BoardNode): Double = n.cost(lv(n.id))
+
+    fun canBuyNode(n: BoardNode): Boolean =
+        lv(n.id) < n.maxLevel && (n.parents.isEmpty() || n.parents.any { has(it) })
+
+    fun buyNode(n: BoardNode): Boolean {
+        if (!canBuyNode(n)) return false
+        val c = boardCost(n)
+        if (n.currency == Currency.STAR) {
+            if (stars < c) return false
+            stars -= c.toInt()
+        } else {
+            if (money < c) return false
+            money -= c
+        }
+        board[n.id] = lv(n.id) + 1
+        return true
     }
 
     fun earn(v: Double) {
         money += v
-        if (v > 0) {
-            totalEarned += v
-            runEarned += v
-        }
+        if (v > 0) stats.totalEarned += v
     }
 
     fun toJson(): String = JSONObject().apply {
+        put("v", 2)
+        put("day", day)
         put("money", money)
-        put("total", totalEarned)
-        put("run", runEarned)
-        put("tp", techPoints)
-        put("auto", automation)
+        put("stars", stars)
         put("current", current)
         put("unlocked", org.json.JSONArray(unlocked.toList()))
         put("progress", org.json.JSONArray(progress.values.map { it.toJson() }))
-        put("lastSeen", lastSeenMs)
-        put("offlineRate", offlineRate)
+        put("board", JSONObject().apply { board.forEach { (k, v) -> put(k, v) } })
+        put("goals", org.json.JSONArray(goalsDone.toList()))
+        put("stats", stats.toJson())
+        put("race", raceUsedDay)
+        put("event", nextEvent.name)
     }.toString()
 
     companion object {
@@ -269,25 +339,23 @@ class GameState {
             if (s.isNullOrBlank()) return g
             runCatching {
                 val o = JSONObject(s)
+                if (o.optInt("v", 1) < 2) return g   // 旧版 (常時放置型) のセーブは引き継がない
+                g.day = o.optInt("day", 1)
                 g.money = o.optDouble("money", 0.0)
-                g.totalEarned = o.optDouble("total", 0.0)
-                g.runEarned = o.optDouble("run", 0.0)
-                g.techPoints = o.optInt("tp", 0)
-                g.automation = o.optInt("auto", 0)
-                fun migrate(k: String) = GameRoster.legacyKeys[k] ?: k
-                g.current = migrate(o.optString("current", g.current)).takeIf { GameRoster.has(it) } ?: GameRoster.ROOT
+                g.stars = o.optInt("stars", 0)
+                g.current = o.optString("current", GameRoster.ROOT).takeIf { GameRoster.has(it) } ?: GameRoster.ROOT
                 o.optJSONArray("unlocked")?.let { a ->
-                    for (i in 0 until a.length()) migrate(a.getString(i)).takeIf { GameRoster.has(it) }?.let { g.unlocked += it }
+                    for (i in 0 until a.length()) a.getString(i).takeIf { GameRoster.has(it) }?.let { g.unlocked += it }
                 }
                 if (g.current !in g.unlocked) g.current = GameRoster.ROOT
                 o.optJSONArray("progress")?.let { a ->
-                    for (i in 0 until a.length()) EngineProgress.fromJson(a.getJSONObject(i)).let { p ->
-                        val k = migrate(p.key)
-                        if (GameRoster.has(k)) g.progress[k] = EngineProgress(k).apply { levels += p.levels; bestDragTime = p.bestDragTime }
-                    }
+                    for (i in 0 until a.length()) EngineProgress.fromJson(a.getJSONObject(i)).let { p -> if (GameRoster.has(p.key)) g.progress[p.key] = p }
                 }
-                g.lastSeenMs = o.optLong("lastSeen", 0L)
-                g.offlineRate = o.optDouble("offlineRate", 0.0)
+                o.optJSONObject("board")?.let { b -> b.keys().forEach { k -> if (GameBoard.has(k)) g.board[k] = b.getInt(k) } }
+                o.optJSONArray("goals")?.let { a -> for (i in 0 until a.length()) g.goalsDone += a.getString(i) }
+                o.optJSONObject("stats")?.let { g.stats.read(it) }
+                g.raceUsedDay = o.optInt("race", 0)
+                g.nextEvent = runCatching { DayEvent.valueOf(o.optString("event", "NONE")) }.getOrDefault(DayEvent.NONE)
             }
             return g
         }
@@ -319,6 +387,7 @@ object EngineTuner {
     fun apply(engine: JSONObject, p: EngineProgress): JSONObject {
         val j = JSONObject(engine.toString())
         val fam = engineFamily(j)
+        applySpecialty(j, fam, p.specialty)
         fun lv(u: UpgradeKind) = p.level(u).toDouble()
         fun scale(key: String, f: Double) { if (j.has(key)) j.put(key, j.getDouble(key) * f) }
         when (fam) {
@@ -353,12 +422,24 @@ object EngineTuner {
             }
         }
         val tuning = j.optJSONObject("tuning") ?: JSONObject()
-        tuning.put("breathingScale", 1 + 0.06 * lv(UpgradeKind.CAMS))
+        val specBreath = if (p.specialty == EngineSpecialty.HIGH_REV) 1.10 else 1.0
+        tuning.put("breathingScale", (1 + 0.06 * lv(UpgradeKind.CAMS)) * specBreath)
         tuning.put("frictionScale", 0.95.pow(lv(UpgradeKind.LIGHTEN)))
         tuning.put("backpressureScale", 0.92.pow(lv(UpgradeKind.EXHAUST)))
-        tuning.put("coolingScale", 1 + 0.12 * lv(UpgradeKind.RADIATOR))
         j.put("tuning", tuning)
         return j
+    }
+
+    /** 仕様 (高回転/低速トルク/燃費) を定義 JSON に反映 */
+    private fun applySpecialty(j: JSONObject, fam: String, s: EngineSpecialty) {
+        if (fam == "turbine" || fam == "electric" || s == EngineSpecialty.NONE) return
+        fun scale(key: String, f: Double) { if (j.has(key)) j.put(key, j.getDouble(key) * f) }
+        when (s) {
+            EngineSpecialty.HIGH_REV -> { scale("redlineRpm", 1.10); scale("inertia", 0.90) }
+            EngineSpecialty.TORQUE -> { scale("stroke", 1.06); scale("rodLength", 1.06); scale("redlineRpm", 0.95) }
+            EngineSpecialty.ECO -> if (j.has("compressionRatio")) j.put("compressionRatio", j.getDouble("compressionRatio") + 1.0)
+            EngineSpecialty.NONE -> {}
+        }
     }
 }
 
@@ -390,6 +471,3 @@ fun fmtMoney(v: Double): String {
     val s = if (x < 10) "%.2f" else if (x < 100) "%.1f" else "%.0f"
     return (if (v < 0) "-" else "") + s.format(x) + units[i]
 }
-
-/** 収入の対数スケール (UI のバー表示用) */
-fun logFrac(v: Double, maxV: Double): Float = if (v <= 1 || maxV <= 1) 0f else (ln(v) / ln(maxV)).toFloat().coerceIn(0f, 1f)

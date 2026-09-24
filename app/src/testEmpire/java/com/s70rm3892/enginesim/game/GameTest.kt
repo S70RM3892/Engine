@@ -73,89 +73,6 @@ class GameTest {
     }
 
     @Test
-    fun branchChoiceIsFree() {
-        val g = GameState()
-        val firstTier = GameRoster.children(GameRoster.ROOT)
-        assertTrue("several branches from the root", firstTier.size >= 6)
-        assertTrue(firstTier.all { g.canUnlock(it) })
-        val v4 = GameRoster.byKey("v4_90")
-        assertFalse("needs its parent", g.canUnlock(v4))
-        g.money = 1e9
-        assertTrue(g.unlock(GameRoster.byKey("v2_45")))
-        assertTrue(g.canUnlock(v4))
-        assertFalse("no double unlock", g.unlock(GameRoster.byKey("v2_45")))
-        // 複数の親を持つノード: どれか 1 つで良い
-        val motor = GameRoster.byKey("motor_induction")
-        assertFalse(g.canUnlock(motor))
-        g.money = 1e9
-        assertTrue(g.unlock(v4))
-        assertTrue(g.canUnlock(motor))
-        val before = g.money
-        assertTrue(g.unlock(motor))
-        assertEquals(before - motor.price, g.money, 1e-6)
-        // 資金不足
-        g.money = 0.0
-        assertFalse(g.unlock(GameRoster.byKey("r3")))
-    }
-
-    @Test
-    fun legacySaveMigrates() {
-        val old = """{"money":5,"current":"rotary","unlocked":["tiller","twin","rotary","gone"],
-            "progress":[{"key":"rotary","best":0,"levels":{"CAMS":3}}]}"""
-        val g = GameState.fromJson(old)
-        assertEquals("wankel2_13b", g.current)
-        assertEquals(setOf("tiller", "i2_270", "wankel2_13b"), g.unlocked)
-        assertEquals(3, g.prog("wankel2_13b").level(UpgradeKind.CAMS))
-    }
-
-    @Test
-    fun upgradeCostGrowsAndPrestigeResets() {
-        val g = GameState()
-        val def = GameRoster.engines[1]
-        val c0 = g.upgradeCost(def, UpgradeKind.BORE)
-        g.prog(def.key).levels[UpgradeKind.BORE] = 3
-        assertEquals(c0 * UpgradeKind.BORE.growth * UpgradeKind.BORE.growth * UpgradeKind.BORE.growth, g.upgradeCost(def, UpgradeKind.BORE), 1e-6)
-
-        assertEquals(0, g.prestige())            // 条件未達では何も起きない
-        g.earn(4.1e6)
-        g.unlocked += def.key
-        g.current = def.key
-        g.automation = 3
-        assertEquals(2, g.pendingTechPoints())   // floor(sqrt(4.1))
-        assertEquals(2, g.prestige())
-        assertEquals(0.0, g.money, 0.0)
-        assertEquals(setOf(GameRoster.engines.first().key), g.unlocked)
-        assertEquals(0, g.prog(def.key).level(UpgradeKind.BORE))
-        assertEquals(0, g.automation)
-        assertEquals(1.2, g.multiplier, 1e-9)
-        assertEquals(4.1e6, g.totalEarned, 1e-6)
-    }
-
-    @Test
-    fun saveRoundTripAndOffline() {
-        val g = GameState()
-        g.earn(1234.5)
-        g.unlocked += "i2_270"
-        g.current = "i2_270"
-        g.prog("i2_270").levels[UpgradeKind.CAMS] = 4
-        g.prog("i2_270").bestDragTime = 12.3
-        g.offlineRate = 10.0
-        g.lastSeenMs = 1_000_000L
-        val r = GameState.fromJson(g.toJson())
-        assertEquals(1234.5, r.money, 1e-9)
-        assertEquals("i2_270", r.current)
-        assertTrue("i2_270" in r.unlocked)
-        assertEquals(4, r.prog("i2_270").level(UpgradeKind.CAMS))
-        assertEquals(12.3, r.prog("i2_270").bestDragTime, 1e-9)
-        // 100 秒放置 → 10/s × 100 × 50%
-        assertEquals(500.0, r.collectOffline(1_100_000L), 1e-6)
-        // 上限 4 時間
-        val r2 = GameState.fromJson(g.toJson())
-        assertEquals(10.0 * GameRules.OFFLINE_CAP_S * GameRules.OFFLINE_RATE, r2.collectOffline(1_000_000L + 10L * 24 * 3600 * 1000), 1e-6)
-        assertEquals(0, GameState.fromJson("garbage").techPoints)
-    }
-
-    @Test
     fun upgradeFamilies() {
         val tiller = GameRoster.byKey(GameRoster.ROOT)
         val v8 = GameRoster.byKey("v8_cross")
@@ -169,7 +86,6 @@ class GameTest {
         assertTrue(upgradeApplies(fan, "turbine", UpgradeKind.SPOOL))
         assertFalse(upgradeApplies(fan, "turbine", UpgradeKind.BORE))
         assertTrue(upgradeApplies(motor, "electric", UpgradeKind.MAGNETS))
-        assertTrue(upgradeApplies(motor, "electric", UpgradeKind.RADIATOR))
         assertFalse(upgradeApplies(motor, "electric", UpgradeKind.BOOST))
     }
 
@@ -178,7 +94,7 @@ class GameTest {
         // 直4 ターボ: ボア/圧縮比/レブ/ブースト
         val p = EngineProgress("i4t").apply {
             levels[UpgradeKind.BORE] = 2; levels[UpgradeKind.COMPRESSION] = 1; levels[UpgradeKind.REV] = 2
-            levels[UpgradeKind.BOOST] = 3; levels[UpgradeKind.RADIATOR] = 5
+            levels[UpgradeKind.BOOST] = 3
         }
         val base = asset("i4_20t")
         val t = EngineTuner.apply(base, p)
@@ -186,7 +102,6 @@ class GameTest {
         assertEquals(base.getDouble("compressionRatio") + 0.4, t.getDouble("compressionRatio"), 1e-9)
         assertEquals(base.getDouble("redlineRpm") * 1.06, t.getDouble("redlineRpm"), 1e-6)
         assertEquals(1.3 + 0.6, t.getJSONObject("induction").getDouble("maxBoostBar"), 1e-9)
-        assertEquals(1.6, t.getJSONObject("tuning").getDouble("coolingScale"), 1e-9)
         assertEquals(1.3, base.getJSONObject("induction").getDouble("maxBoostBar"), 1e-9)  // 元は不変
 
         // NA のカスタム機に過給機 → ターボ化
@@ -210,7 +125,186 @@ class GameTest {
         assertEquals(4, EngineTuner.customParams(tiller, EngineProgress("tiller").apply { levels[UpgradeKind.CYLINDERS] = 3 }).getInt("cylinders"))
     }
 
-    /** 全アップグレード最大のカタログ機 JSON を書き出す (ホストの game_balance でネイティブ読み込みを検証) */
+
+    @Test
+    fun boardIsConsistent() {
+        val ids = GameBoard.nodes.map { it.id }
+        assertEquals(ids.size, ids.toSet().size)
+        val cells = GameBoard.nodes.map { it.lane to it.depth }
+        assertEquals("no overlapping nodes", cells.size, cells.toSet().size)
+        for (n in GameBoard.nodes) {
+            assertTrue(n.id, n.lane in GameBoard.lanes.indices)
+            for (p in n.parents) {
+                assertTrue("$p exists", GameBoard.has(p))
+                assertTrue("${n.id} deeper than $p", n.depth > GameBoard.byId(p).depth)
+            }
+        }
+        // 工房の参照はすべて実在するノード
+        GameRoster.laneWorkshop.filterNotNull().forEach { assertTrue(it, GameBoard.has(it)) }
+    }
+
+    @Test
+    fun workshopsGateLanesAndStars() {
+        val g = GameState()
+        g.money = 1e12
+        val stirling = GameRoster.byKey("stirling_alpha")
+        assertFalse("外燃系統は蒸気工房が必要", g.canUnlock(stirling))
+        assertTrue(g.canUnlock(GameRoster.byKey("i2_270")))
+        g.stars = 10
+        assertTrue(g.buyNode(GameBoard.byId("goggles")))
+        assertTrue(g.buyNode(GameBoard.byId("steamWorks")))
+        assertEquals(10 - 1 - 3, g.stars)
+        assertTrue(g.canUnlock(stirling))
+        // 深い段は ★ も必要
+        val deep = GameRoster.byKey("i5_25")
+        assertEquals(2, deep.starCost)
+        listOf("i2_270", "i3_1200", "i4_20").forEach { g.unlocked += it }
+        g.stars = 1
+        assertFalse(g.unlock(deep))
+        g.stars = 2
+        assertTrue(g.unlock(deep))
+        assertEquals(0, g.stars)
+        // 過給機チューンは過給ショップが必要
+        assertFalse(g.tuneAvailable(UpgradeKind.BOOST))
+        assertFalse(g.buyTune(GameRoster.byKey("i4_20"), UpgradeKind.BOOST))
+    }
+
+    @Test
+    fun specialtyIsExclusiveAndCosts() {
+        val g = GameState()
+        val d = GameRoster.byKey(GameRoster.ROOT)
+        assertFalse("★ が必要", g.setSpecialty(d, EngineSpecialty.HIGH_REV))
+        g.stars = 2
+        assertTrue(g.setSpecialty(d, EngineSpecialty.HIGH_REV))
+        assertEquals(0, g.stars)
+        assertEquals(EngineSpecialty.HIGH_REV, g.prog(d.key).specialty)
+        // 2 回目以降は ¥ (エンジン価格の 50%)
+        assertFalse(g.setSpecialty(d, EngineSpecialty.ECO))
+        g.money = d.basePrice * 0.5
+        assertTrue(g.setSpecialty(d, EngineSpecialty.ECO))
+        assertEquals(0.0, g.money, 1e-9)
+        val t = EngineTuner.apply(asset("i4_20"), g.prog(d.key))
+        assertEquals(asset("i4_20").getDouble("compressionRatio") + 1.0, t.getDouble("compressionRatio"), 1e-9)
+    }
+
+    private fun profile(red: Double = 7000.0, cycle: String = "otto4", power: Double = 50.0) =
+        EngineProfile(red, 800.0, "reciprocating", cycle, boostCapable = false, propeller = false, refPowerKw = power, refEff = 0.3, refNet = 30.0)
+
+    private fun sample(rpm: Double, kw: Double, limiter: Boolean = false, af: Int = 0) =
+        Sample(rpm, kw * 1000 / (rpm * 2 * Math.PI / 60), kw, 0.0, kw / 0.3, 0.3, 0.0, limiter, af)
+
+    @Test
+    fun runSessionEarnsAndEnds() {
+        val g = GameState()
+        val r = RunSession(profile(), g.perks, DayEvent.NONE, 1.0, seed = 1)
+        val ev = ArrayList<RunSession.Ev>()
+        assertEquals(GameRules.SHIFT_BASE_S, r.duration, 1e-9)
+        assertEquals(2, r.orders.size)
+        while (!r.finished) r.step(0.1, sample(0.85 * 7000, 40.0), 0.6, ev)
+        assertTrue("earned ${r.earned}", r.earned > 40.0 * 0.5 * 50)
+        assertTrue("combo builds in the sweet zone", r.combo > 2.0)
+        assertTrue(r.sweetSeconds > 40)
+        assertFalse(r.blown)
+        val res = r.result()
+        g.closeDay(res, GameRoster.ROOT)
+        assertEquals(2, g.day)
+        assertEquals(1, g.stats.days)
+        assertEquals(40.0, g.prog(GameRoster.ROOT).bestPowerKw, 1e-9)
+        assertTrue(g.money > 0)
+    }
+
+    @Test
+    fun abuseBlowsTheEngine() {
+        val g = GameState()
+        val r = RunSession(profile(), g.perks, DayEvent.NONE, 1.0, seed = 2)
+        val ev = ArrayList<RunSession.Ev>()
+        var t = 0
+        while (!r.finished && t < 2000) { r.step(0.1, sample(7200.0, 45.0, limiter = true), 1.0, ev); t++ }
+        assertTrue("limiter + full throttle blows it", r.blown)
+        assertTrue(ev.any { it is RunSession.Ev.Overheat })
+        assertTrue(ev.any { it is RunSession.Ev.Blown })
+        assertTrue("finished early", r.time < r.duration)
+    }
+
+    @Test
+    fun ordersComplete() {
+        val g = GameState()
+        // 多数の依頼を生成して、種類ごとの完了条件が満たせることを確認
+        val prof = profile()
+        val kinds = HashSet<OrderKind>()
+        for (seed in 0L until 60L) {
+            val o = OrderFactory.make(prof, g.perks, DayEvent.NONE, kotlin.random.Random(seed))
+            kinds += o.kind
+            assertTrue(o.reward > 0)
+        }
+        assertTrue("variety of orders (${kinds.size})", kinds.size >= 8)
+        assertFalse("VIP needs the board node", OrderKind.VIP_LIMIT in kinds)
+        assertFalse("no boost orders for NA", OrderKind.BOOST in kinds)
+        // 高回転キープ: 帯の中を保てば達成
+        val r = RunSession(prof, g.perks, DayEvent.NONE, 1.0, seed = 3)
+        r.orders.clear()
+        r.orders += Order(OrderKind.HOLD_BAND, "t", "d", 1.0, 100.0, 1, 5000.0, 6000.0, 3.0)
+        r.orders += Order(OrderKind.PEAK_POWER, "t", "d", 1.0, 50.0, 0, 30.0)
+        val ev = ArrayList<RunSession.Ev>()
+        repeat(40) { r.step(0.1, sample(5500.0, 35.0), 0.7, ev) }
+        assertEquals(2, r.ordersDone)
+        assertEquals(1, r.starsEarned)
+        assertEquals(150.0, r.orderEarned, 1e-9)
+        assertEquals(2, ev.count { it is RunSession.Ev.OrderDone })
+    }
+
+    @Test
+    fun eventsChangeTheDay() {
+        val g = GameState()
+        fun earn(e: DayEvent): Double {
+            val r = RunSession(profile(), g.perks, e, 1.0, seed = 5)
+            r.orders.clear()
+            val ev = ArrayList<RunSession.Ev>()
+            repeat(100) { r.step(0.1, sample(0.85 * 7000, 40.0), 0.5, ev) }
+            return r.earned
+        }
+        assertTrue(earn(DayEvent.PEAK_DEMAND) > earn(DayEvent.NONE) * 1.3)
+        assertTrue(earn(DayEvent.FUEL_SPIKE) < earn(DayEvent.NONE))
+        assertEquals(DayEvent.NONE, DayEvent.roll(1, kotlin.random.Random(1)))
+    }
+
+    @Test
+    fun goalsAwardStarsOnce() {
+        val g = GameState()
+        g.stats.days = 1
+        val got = Goals.evaluate(g)
+        assertEquals(listOf("day1"), got.map { it.id })
+        assertEquals(1, g.stars)
+        assertTrue(Goals.evaluate(g).isEmpty())
+    }
+
+    @Test
+    fun saveRoundTrip() {
+        val g = GameState()
+        g.money = 1234.5; g.stars = 7; g.day = 9
+        g.unlocked += "i2_270"; g.current = "i2_270"
+        g.board["grid"] = 3
+        g.prog("i2_270").levels[UpgradeKind.CAMS] = 4
+        g.prog("i2_270").specialty = EngineSpecialty.TORQUE
+        g.goalsDone += "day1"
+        g.stats.ordersDone = 12
+        g.nextEvent = DayEvent.HEATWAVE
+        val r = GameState.fromJson(g.toJson())
+        assertEquals(1234.5, r.money, 1e-9)
+        assertEquals(7, r.stars)
+        assertEquals(9, r.day)
+        assertEquals("i2_270", r.current)
+        assertEquals(3, r.lv("grid"))
+        assertEquals(4, r.prog("i2_270").level(UpgradeKind.CAMS))
+        assertEquals(EngineSpecialty.TORQUE, r.prog("i2_270").specialty)
+        assertTrue("day1" in r.goalsDone)
+        assertEquals(12, r.stats.ordersDone)
+        assertEquals(DayEvent.HEATWAVE, r.nextEvent)
+        // 旧版 (v1) のセーブは引き継がずに新規開始
+        assertEquals(1, GameState.fromJson("""{"money":5e9,"current":"v8"}""").day)
+        assertEquals(0.0, GameState.fromJson("""{"money":5e9}""").money, 0.0)
+    }
+
     @Test
     fun exportMaxTunedEngines() {
         val dir = File("build/game_tuned").apply { mkdirs() }
@@ -221,33 +315,12 @@ class GameTest {
         }
     }
 
-    /** ツリー全体を 1 枚に描く (ドキュメント用) */
-    @Test
-    fun treeOverviewScreenshot() {
-        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
-        val g = GameState().apply {
-            money = 60_000.0
-            listOf("i2_270", "i3_1200", "i4_20", "i4_20t", "r3", "r5", "wankel1").forEach { unlocked += it }
-            current = "i4_20t"
-        }
-        val tree = TechTreeView(activity).apply { state = g; currentKey = g.current; selectedKey = "i4_tdi" }
-        val w = tree.contentW.toInt()
-        val h = tree.contentH.toInt()
-        tree.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
-        tree.layout(0, 0, w, h)
-        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        tree.draw(Canvas(bmp))
-        val out = File("build/screenshots/game_tree_full.png")
-        out.parentFile?.mkdirs()
-        out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-    }
 
-    // ------------------------------------------------------------ HUD スクリーンショット
+    // ------------------------------------------------------------ 画面
 
     private class FakeBackend : ConsoleBackend {
         var controls = 0
         var lastLoad = 0f
-        var lastThrottle = 0f
         var lastMode = -1
         override fun loadEngine(json: String): String {
             val o = JSONObject(json)
@@ -261,7 +334,7 @@ class GameTest {
             targetRpm: Float, throttle: Float, throttleLink: Boolean, load: Float, sparkOffsetDeg: Float,
             ignition: Boolean, starter: Boolean, gear: Int, timeScale: Float, cylinderCutMask: Long, autoStart: Boolean,
             driveMode: Int, brake: Float, grade: Float,
-        ) { controls++; lastLoad = load; lastThrottle = throttle }
+        ) { controls++; lastLoad = load }
 
         override fun buildCustomEngine(paramsJson: String) = JSONObject(paramsJson).put("family", "reciprocating").toString()
         override fun setView(preset: Int, presetSerial: Int, mode: Int, yawRate: Float, pitchRate: Float, zoom: Float,
@@ -277,11 +350,17 @@ class GameTest {
     }
 
     @Test
-    fun hudScreenshotAndEconomyLoop() {
+    fun dayAndNightScreens() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val backend = FakeBackend()
         val store = object : GameController.Store {
-            var saved: String? = GameState().apply { money = 123_456.0; unlocked += "i2_270"; unlocked += "wankel1" }.toJson()
+            var saved: String? = GameState().apply {
+                money = 12_345.0; stars = 6; day = 4
+                unlocked += "i2_270"; unlocked += "wankel1"
+                board["goggles"] = 1; board["grid"] = 2; board["overtime"] = 1
+                nextEvent = DayEvent.HEATWAVE
+                stats.days = 3
+            }.toJson()
             override fun load() = saved
             override fun save(json: String) { saved = json }
         }
@@ -298,13 +377,8 @@ class GameTest {
         val game = GameController(activity, backend, source, store)
         game.buildInto(root, vp)
         game.start()
-        val m0 = game.state.money
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(3000))
-        assertTrue("controls pushed", backend.controls > 10)
-        assertTrue("auto dyno load engaged", backend.lastLoad > 0.5f)
-        assertTrue("earned money: ${game.state.money} vs $m0", game.state.money > m0)
-
         fun shot(name: String) {
+            shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300))
             val dm = activity.resources.displayMetrics
             root.measure(View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(dm.heightPixels, View.MeasureSpec.EXACTLY))
@@ -315,15 +389,36 @@ class GameTest {
             out.parentFile?.mkdirs()
             out.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
+        // 夜 (起動直後): 強化ボード
+        assertEquals(GameController.Phase.NIGHT, game.phase)
+        shot("game_night_board.png")
+        game.openTab(GameController.NightTab.ENGINES)
+        shot("game_night_engines.png")
+        game.openTab(GameController.NightTab.TUNE)
+        shot("game_night_tune.png")
+        game.openTab(GameController.NightTab.GOALS)
+        shot("game_night_goals.png")
+
+        // 昼: シフト開始 → 数秒回す
+        game.startDay()
+        assertEquals(GameController.Phase.DAY, game.phase)
+        assertEquals(DayEvent.HEATWAVE, game.run!!.event)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(4000))
+        assertTrue("auto dyno load engaged", backend.lastLoad > 0.5f)
+        assertTrue("earning", game.run!!.earned > 0)
+        shot("game_hud.png")
         game.showInside(true)
         game.setViewMode(2)
-        assertEquals("section mode sent", 2, backend.lastMode)
-        shot("game_hud.png")
+        assertEquals(2, backend.lastMode)
+        shot("game_hud_inside.png")
+        game.showInside(false)
 
-        game.openTree()
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(300))
-        shot("game_tree.png")
+        // シフト終了 (時間切れまで進める) → 夜に戻り、日付が進む
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(70_000))
+        assertEquals(GameController.Phase.NIGHT, game.phase)
+        assertEquals(5, game.state.day)
+        shot("game_night_result.png")
         game.stop()
-        assertTrue("saved", store.saved!!.contains("\"money\""))
+        assertTrue(store.saved!!.contains("\"day\":5"))
     }
 }

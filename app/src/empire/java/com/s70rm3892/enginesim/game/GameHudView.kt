@@ -48,6 +48,20 @@ class GameHudView(context: Context) : View(context) {
     var isTurbine = false
     var thrustKn = 0f
     var autoLevel = 0
+    // 1 日 (シフト)
+    var dayActive = false
+    var day = 1
+    var timeLeft = 0f
+    var duration = 1f
+    var eventLabel = ""
+    var todayEarned = 0.0
+    var stars = 0
+    var hp = 100f
+    var maxHp = 100f
+    var comboCap = GameRules.COMBO_MAX.toFloat()
+    /** 依頼カード (タイトル, 詳細, 進捗 0..1, 報酬 ¥, ★, 完了) */
+    data class OrderCard(val title: String, val detail: String, val progress: Float, val reward: Double, val stars: Int, val done: Boolean)
+    var orders: List<OrderCard> = emptyList()
     /** 内部表示中: 計器を右上の 1 行にまとめてエンジンを見やすくする */
     var compact = false
 
@@ -150,9 +164,14 @@ class GameHudView(context: Context) : View(context) {
         val w = width - rightInset
         val h = height.toFloat()
         drawVignette(c, w, h)
-        drawMoney(c, w)
-        drawTraits(c)
-        if (raceActive) drawRace(c, w, h) else if (compact) drawCompact(c, w) else drawGauges(c, w, h)
+        // 夜 (ガレージ画面の裏) は演出 (紙吹雪・浮遊テキスト・ポップアップ) だけ描く
+        val showGauges = dayActive || raceActive
+        if (showGauges) {
+            drawMoney(c, w)
+            drawTraits(c)
+        }
+        if (dayActive && !raceActive) { drawDayTop(c, w); drawOrders(c, w, h) }
+        if (raceActive) drawRace(c, w, h) else if (!showGauges) Unit else if (compact) drawCompact(c, w) else drawGauges(c, w, h)
         // 浮遊テキスト
         tp.textAlign = Paint.Align.CENTER
         for (f in floats) {
@@ -217,14 +236,14 @@ class GameHudView(context: Context) : View(context) {
         tp.textAlign = Paint.Align.LEFT
         tp.textSize = dp(34f)
         tp.color = Pal.AMBER
-        c.drawText("¥ " + fmtMoney(shownMoney), x, dp(42f), tp)
+        c.drawText((if (dayActive) "今日 ¥ " else "¥ ") + fmtMoney(if (dayActive) todayEarned else shownMoney), x, dp(42f), tp)
         tp.textSize = dp(15f)
         tp.color = if (incomePerSec >= 0) Pal.GREEN else Pal.RED
         val inc = (if (incomePerSec >= 0) "+" else "") + fmtMoney(incomePerSec) + " /s"
         c.drawText(inc, x, dp(64f), tp)
         tp.color = Pal.DIM
-        val auto = if (autoLevel > 0) "   AUTO Lv$autoLevel" else ""
-        c.drawText("×%.2f".format(multiplier) + auto, x + tp.measureText(inc) + dp(12f), dp(64f), tp)
+        val auto = if (autoLevel > 0) "  AUTO Lv$autoLevel" else ""
+        c.drawText("×%.2f  ★$stars".format(multiplier) + auto, x + tp.measureText(inc) + dp(12f), dp(64f), tp)
         tp.textAlign = Paint.Align.RIGHT
         tp.textSize = dp(16f)
         tp.color = Pal.TEXT
@@ -234,6 +253,66 @@ class GameHudView(context: Context) : View(context) {
         val line = if (isTurbine) "%.0f kW  推力 %.1f kN  EGT".format(powerKw, thrustKn)
         else "%.0f kW  η %.0f%%%s".format(powerKw, efficiency * 100, if (boostBar > 0.05f) "  +%.2f bar".format(boostBar) else "")
         c.drawText(line, w - dp(12f), dp(46f), tp)
+    }
+
+    /** 上部中央: タイマーと日付・イベント */
+    private fun drawDayTop(c: Canvas, w: Float) {
+        val cx = w * 0.5f
+        tp.textAlign = Paint.Align.CENTER
+        tp.textSize = dp(30f)
+        val t = timeLeft.coerceAtLeast(0f)
+        tp.color = if (t < 10 && (time * 4).toInt() % 2 == 0) Pal.RED else Pal.TEXT
+        c.drawText("%d:%02d".format(t.toInt() / 60, t.toInt() % 60), cx, dp(38f), tp)
+        // 残り時間バー
+        val bw = dp(140f)
+        rect.set(cx - bw / 2, dp(46f), cx + bw / 2, dp(50f))
+        p.style = Paint.Style.FILL
+        p.color = Color.argb(150, 40, 44, 52)
+        c.drawRect(rect, p)
+        rect.right = rect.left + bw * (t / duration).coerceIn(0f, 1f)
+        p.color = if (t < 10) Pal.RED else Pal.AMBER
+        c.drawRect(rect, p)
+        tp.textSize = dp(12f)
+        tp.color = Pal.DIM
+        c.drawText("DAY $day" + if (eventLabel.isNotEmpty()) "  ·  $eventLabel" else "", cx, dp(66f), tp)
+    }
+
+    /** 右側: 依頼カード */
+    private fun drawOrders(c: Canvas, w: Float, h: Float) {
+        val cw = dp(210f)
+        val x0 = w - cw - dp(10f)
+        var y = dp(56f)
+        val ch = dp(38f)
+        for (o in orders) {
+            rect.set(x0, y, x0 + cw, y + ch)
+            p.style = Paint.Style.FILL
+            p.color = if (o.done) Color.argb(200, 30, 70, 40) else Color.argb(185, 16, 18, 24)
+            c.drawRoundRect(rect, dp(6f), dp(6f), p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = dp(1f)
+            p.color = if (o.done) Pal.GREEN else if (o.stars >= 3) Pal.VIOLET else Pal.BORDER
+            c.drawRoundRect(rect, dp(6f), dp(6f), p)
+            tp.textAlign = Paint.Align.LEFT
+            tp.textSize = dp(11.5f)
+            tp.color = if (o.done) Pal.GREEN else Pal.TEXT
+            c.drawText(if (o.done) "✓ ${o.title}" else o.title, x0 + dp(7f), y + dp(13f), tp)
+            tp.textAlign = Paint.Align.RIGHT
+            tp.color = Pal.AMBER
+            c.drawText("¥${fmtMoney(o.reward)} ★${o.stars}", x0 + cw - dp(7f), y + dp(13f), tp)
+            tp.textAlign = Paint.Align.LEFT
+            tp.textSize = dp(9.5f)
+            tp.color = Pal.DIM
+            var d = o.detail
+            while (d.length > 2 && tp.measureText(d) > cw - dp(14f)) d = d.dropLast(2)
+            if (d != o.detail) d += "…"
+            c.drawText(d, x0 + dp(7f), y + dp(25f), tp)
+            p.style = Paint.Style.FILL
+            p.color = Color.argb(150, 50, 54, 64)
+            c.drawRect(x0 + dp(7f), y + ch - dp(9f), x0 + cw - dp(7f), y + ch - dp(5f), p)
+            p.color = if (o.done) Pal.GREEN else Pal.CYAN
+            c.drawRect(x0 + dp(7f), y + ch - dp(9f), x0 + dp(7f) + (cw - dp(14f)) * o.progress.coerceIn(0f, 1f), y + ch - dp(5f), p)
+            y += ch + dp(4f)
+        }
     }
 
     private fun drawTraits(c: Canvas) {
@@ -255,7 +334,8 @@ class GameHudView(context: Context) : View(context) {
 
     private fun drawGauges(c: Canvas, w: Float, h: Float) {
         // タコメータ (270° アーク)
-        val r = min(w * 0.16f, (h - bottomInset) * 0.30f).coerceAtLeast(dp(40f))
+        // シフト中は依頼カードと重ならないよう小さめ
+        val r = (if (dayActive) min(w * 0.12f, (h - bottomInset) * 0.17f) else min(w * 0.16f, (h - bottomInset) * 0.30f)).coerceAtLeast(dp(40f))
         val cx = w - r - dp(24f)
         val cy = h - bottomInset - r - dp(12f)
         rect.set(cx - r, cy - r, cx + r, cy + r)
@@ -293,9 +373,14 @@ class GameHudView(context: Context) : View(context) {
         val bx = cx - r - dp(34f)
         val bh = r * 1.7f
         val by = cy + r * 0.7f
-        drawVBar(c, bx, by, bh, (combo - 1f) / (GameRules.COMBO_MAX.toFloat() - 1f), if (combo > 2.5f) Pal.VIOLET else Pal.CYAN, "COMBO", "×%.1f".format(combo))
+        drawVBar(c, bx, by, bh, (combo - 1f) / (comboCap - 1f), if (combo > 2.5f) Pal.VIOLET else Pal.CYAN, "COMBO", "×%.1f".format(combo))
         val heatCol = if (overheat > 0) Pal.RED else if (heat > 0.75f) Color.rgb(255, 110, 40) else Pal.AMBER
         drawVBar(c, bx - dp(34f), by, bh, heat, heatCol, "HEAT", if (overheat > 0) "%.1fs".format(overheat) else "%d%%".format((heat * 100).toInt()))
+        if (dayActive) {
+            val hf = hp / maxHp
+            val hpCol = if (hf < 0.3f && (time * 6).toInt() % 2 == 0) Pal.RED else if (hf < 0.5f) Color.rgb(255, 110, 40) else Pal.GREEN
+            drawVBar(c, bx - dp(68f), by, bh, hf, hpCol, "耐久", "%d".format(hp.toInt()))
+        }
     }
 
     private fun drawCompact(c: Canvas, w: Float) {
