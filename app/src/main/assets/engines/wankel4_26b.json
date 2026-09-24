@@ -31,5 +31,8 @@
     ],
     "tailpipeLength": 1.0,
     "mufflerVolume": 0.005
+  },
+  "vehicle": {
+    "massKg": 900
   }
 }

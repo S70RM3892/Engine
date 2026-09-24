@@ -24,5 +24,8 @@
       9.7
     ],
     "finalDrive": 1.0
+  },
+  "vehicle": {
+    "massKg": 2100
   }
 }

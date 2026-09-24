@@ -9,7 +9,7 @@
   "compressionRatio": 12.5,
   "idleRpm": 1000,
   "redlineRpm": 8000,
-  "inertia": 0.07,
+  "inertia": 0.12,
   "layout": {
     "type": "flat",
     "count": 2,
@@ -39,5 +39,10 @@
     ],
     "finalDrive": 2.9
   },
-  "family": "reciprocating"
+  "family": "reciprocating",
+  "vehicle": {
+    "massKg": 250,
+    "wheelRadius": 0.32,
+    "cdA": 0.45
+  }
 }

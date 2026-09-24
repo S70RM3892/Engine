@@ -1,5 +1,6 @@
 #include "EngineSpec.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "../sim/EngineKinematics.h"
@@ -456,6 +457,21 @@ bool loadEngineSpec(const JsonValue& J, EngineSpec& s, std::string& err) {
         s.drivetrain.propReduction = f(D, "reduction", 1.0f);
         s.drivetrain.propBlades = static_cast<int>(D.num("blades", 3));
         s.drivetrain.propDiameter = f(D, "diameter", 3.0f);
+    }
+
+    const JsonValue& Veh = J["vehicle"];
+    if (Veh.isObject()) {
+        s.vehicle.massKg = f(Veh, "massKg", s.vehicle.massKg);
+        s.vehicle.wheelRadius = f(Veh, "wheelRadius", s.vehicle.wheelRadius);
+        s.vehicle.cdA = f(Veh, "cdA", s.vehicle.cdA);
+        s.vehicle.rollingCoeff = f(Veh, "rollingCoeff", s.vehicle.rollingCoeff);
+    }
+    const JsonValue& Tu = J["tuning"];
+    if (Tu.isObject()) {
+        s.tuning.frictionScale = f(Tu, "frictionScale", 1.0f);
+        s.tuning.backpressureScale = f(Tu, "backpressureScale", 1.0f);
+        s.tuning.coolingScale = f(Tu, "coolingScale", 1.0f);
+        s.tuning.breathingScale = std::max(0.2f, f(Tu, "breathingScale", 1.0f));
     }
 
     bool ok = true;

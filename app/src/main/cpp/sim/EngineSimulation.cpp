@@ -77,6 +77,13 @@ void EngineSimulation::init(const EngineSpec& spec, AudioFeed* feed) {
     spec_.peakTorqueEstimate = static_cast<float>(peakTorqueRef_);
 
     ch_.assign(spec_.chambers.size(), ChamberState());
+    lastEvoTime_.assign(spec_.chambers.size(), -1.0);
+    lastEvoAmp_.assign(spec_.chambers.size(), 0.0f);
+    vehV_ = vehDist_ = 0;
+    autoGear_ = 1;
+    shiftTimer_ = shiftCut_ = slip_ = 0;
+    lockup_ = false;
+    simTime_ = 0;
     v0Ref_.assign(spec_.chambers.size(), 1e-3);
     for (size_t c = 0; c < ch_.size(); ++c) {
         double vmax = 0;
@@ -124,10 +131,14 @@ void EngineSimulation::init(const EngineSpec& spec, AudioFeed* feed) {
 
 double EngineSimulation::exhaustBackPressure() const {
     double r = omega_ / rpmToRad(spec_.redlineRpm);
-    return kPAtm * (1.0 + 0.22 * r * r) + 0.75 * boost_;
+    return kPAtm * (1.0 + 0.22 * r * r * spec_.tuning.backpressureScale) + 0.75 * boost_;
 }
 
 double EngineSimulation::frictionTorque() const {
+    return frictionTorqueBase() * spec_.tuning.frictionScale;
+}
+
+double EngineSimulation::frictionTorqueBase() const {
     double rpm = radToRpm(omega_);
     double n = rpm / 1000.0;
     double coldFactor = 1.0 + 0.8 * std::clamp((355.0 - oilK_) / 60.0, 0.0, 1.0);
@@ -152,6 +163,15 @@ double EngineSimulation::frictionTorque() const {
         default:
             return peakTorqueRef_ * (0.04 + 0.03 * n);
     }
+}
+
+double EngineSimulation::idleControl(double dt) {
+    if (!controls_.ignition || spec_.cycle == Cycle::Steam || spec_.cycle == Cycle::Stirling) return 0.0;
+    double rpm = radToRpm(omega_);
+    double err = spec_.idleRpm - rpm;
+    iscInteg_ = std::clamp(iscInteg_ + err * 2.0 / spec_.redlineRpm * dt, 0.0, 0.3);
+    if (rpm > spec_.idleRpm * 1.6) iscInteg_ *= std::exp(-dt / 0.5);
+    return std::clamp(iscInteg_ + err * 2.5 / spec_.redlineRpm, 0.0, 0.35);
 }
 
 double EngineSimulation::governor(double dt) {
@@ -234,6 +254,13 @@ double EngineSimulation::stepChamber(int c, double theta0, double theta1, double
             double mRef = kPAtm * v0Ref_[c] / (kR * 300.0);
             double amp = std::max(0.0, (p - pExh) / 1e5) + 0.5 * std::min(2.0, s.m / std::max(mRef, 1e-12));
             if (feed_ && c < kMaxChambers) feed_->pulseAmp[c].store(static_cast<float>(amp));
+            lastEvoTime_[c] = simTime_;
+            lastEvoAmp_[c] = static_cast<float>(amp);
+            // 後燃え (アフターファイア): 燃料カット中の未燃焼行程に確率的に発生 (演出/音用)
+            if (!s.fueled && omega_ > rpmToRad(1.5 * spec_.idleRpm) && spec_.hasCombustion() && !spec_.isDiesel()) {
+                afterfireSeed_ = afterfireSeed_ * 1664525u + 1013904223u;
+                if ((afterfireSeed_ >> 24) < 40) ++afterfireCount_;
+            }
             egtK_ = ema(egtK_, T * 0.82, 1.0, 6.0);
         }
         if (crossed(a0, a1, trapAngle, per)) {
@@ -270,8 +297,8 @@ double EngineSimulation::stepChamber(int c, double theta0, double theta1, double
                 liftIn = std::max(0.12, static_cast<double>(kin_.valveLift(c, true, theta1) / std::max(1e-6f, spec_.valves.liftIn)));
                 liftEx = std::max(0.12, static_cast<double>(kin_.valveLift(c, false, theta1) / std::max(1e-6f, spec_.valves.liftEx)));
             }
-            double tauIn = 0.00018 * sizeK * vRel / liftIn;
-            double tauEx = 0.00015 * sizeK * vRel / liftEx;
+            double tauIn = 0.00018 * sizeK * vRel / liftIn / spec_.tuning.breathingScale;
+            double tauEx = 0.00015 * sizeK * vRel / liftEx / spec_.tuning.breathingScale;
             double target, tau;
             if (inOpen && exOpen) { target = 0.5 * (pIn + pExh); tau = 0.5 * (tauIn + tauEx); }
             else if (exOpen) { target = pExh; tau = tauEx; }
@@ -344,8 +371,8 @@ void EngineSimulation::stepReciprocating(double dt) {
     if (rpm < 0.25 * spec_.idleRpm) stalled_ = true;
     else if (rpm > 0.7 * spec_.idleRpm) stalled_ = false;
 
-    // スロットル (ガバナ連動 or 手動)
-    double thr = controls_.throttleLink ? governor(dt) : controls_.throttle;
+    // スロットル (ガバナ連動 or 手動)。手動時もアイドル回転制御 (ISC) が最低開度を保持する
+    double thr = controls_.throttleLink ? governor(dt) : std::max<double>(controls_.throttle, idleControl(dt));
     throttle_ = std::clamp(thr, 0.0, 1.0);
 
     // レブリミッタ (燃料カット, ヒステリシス付き)
@@ -447,11 +474,16 @@ void EngineSimulation::stepReciprocating(double dt) {
             double rr = rpm / spec_.redlineRpm;
             tl = peakTorqueRef_ * (0.45 + 0.75 * controls_.load) * rr * rr;
         }
+        tl += vehicleCoupling(omega_, h);
         loadTorqueRef = tl;
         double crankLimit = std::max(0.45 * spec_.idleRpm, 60.0);
         bool cranking = controls_.starter || (controls_.autoStart && controls_.ignition && stalled_);
-        double ts = (cranking && rpm < crankLimit) ? (0.35 * peakTorqueRef_ * (1.0 - rpm / crankLimit) + tf) : 0.0;
+        // スタータ: 圧縮反力に打ち勝てるだけの減速ギア付きトルク
+        double ts = (cranking && rpm < crankLimit) ? (0.9 * peakTorqueRef_ * (1.0 - rpm / crankLimit) + tf) : 0.0;
 
+        // クランキング中はオートデコンプ (排気弁を僅かに開けて圧縮反力を逃がす) を模擬
+        const bool decomp = ts > 0.0;
+        if (decomp && work < 0) work *= 0.3;
         if (omega_ > 3.0) {
             // エネルギー形式: 1/2 J w^2 の変化 = ガス仕事 - 摩擦仕事 - 負荷仕事
             double e = 0.5 * J * omega_ * omega_ + work + (ts - tf - tl) * dThetaRad;
@@ -462,6 +494,7 @@ void EngineSimulation::stepReciprocating(double dt) {
             if (spec_.cycle != Cycle::Stirling)
                 for (size_t c = 0; c < ch_.size(); ++c)
                     tg += (ch_[c].p - kPAtm) * kin_.chamberDVdTheta(static_cast<int>(c), theta1);
+            if (decomp && tg < 0) tg *= 0.3;
             double net = tg + ts - tl - tf * (omega_ > 0.1 ? 1.0 : 0.5);
             omega_ = std::max(0.0, omega_ + net / J * h);
         }
@@ -534,6 +567,7 @@ void EngineSimulation::stepElectric(double dt) {
         if (w < 0.5 && motorTorque_ < 0) motorTorque_ = 0;  // 停止中の回生は無し
         double tf = 0.004 * m.ratedTorque + 2e-5 * w * w * m.ratedTorque / 300.0;
         tl = controls_.load * m.ratedTorque * std::clamp(w / 20.0, 0.0, 1.0);
+        tl += vehicleCoupling(omega_, h);
         omega_ = std::max(0.0, omega_ + (motorTorque_ - tf - tl) / spec_.inertia * h);
         theta_ = wrapPos(theta_ + omega_ * h * 180.0 / kPiD, 360.0);
     }
@@ -565,7 +599,7 @@ void EngineSimulation::updateCommon(double dt, double brakeTorque, double fuelW,
     double coolantW = fuelEma_ * kLossFrac + fricEma_ * 0.5;
     coolEma_ = coolantW;
     double refFuelW = peakTorqueRef_ * rpmToRad(spec_.redlineRpm) / 0.3;
-    double ua = 0.25 * refFuelW / 65.0;
+    double ua = 0.25 * refFuelW / 65.0 * spec_.tuning.coolingScale;
     double open = std::clamp((coolantK_ - 356.0) / 10.0, 0.05, 1.0);
     coolantK_ += (coolantW - ua * open * (coolantK_ - 300.0)) / 60000.0 * dt;
     oilK_ = ema(oilK_, coolantK_ + 8.0 + 20.0 * rpm / spec_.redlineRpm, dt, 30.0);
@@ -599,11 +633,27 @@ void EngineSimulation::updateCommon(double dt, double brakeTorque, double fuelW,
     for (auto& c : ch_) { pk = std::max(pk, c.pMax); c.pMax *= 0.995f; }
     tel_.peakPressureBar = pk / 1e5f;
     tel_.gear = controls_.gear;
-    int g = controls_.gear;
+    tel_.effectiveGear = effectiveGear();
+    tel_.speedKmh = static_cast<float>(vehV_ * 3.6);
+    tel_.shifting = shiftCut_ > 0;
+    tel_.lockup = lockup_;
+    tel_.slipRatio = static_cast<float>(slip_);
+    tel_.shiftCount = shiftCount_;
+    tel_.afterfireCount = afterfireCount_;
+    tel_.distanceM = static_cast<float>(vehDist_);
+    if (feed_) {
+        feed_->shiftCount.store(shiftCount_);
+        feed_->afterfireCount.store(afterfireCount_);
+    }
+    int g = effectiveGear();
     const auto& gears = spec_.drivetrain.gears;
     if (spec_.drivetrain.propeller) {
         tel_.outputRpm = static_cast<float>(rpm * spec_.drivetrain.propReduction);
         tel_.outputTorqueNm = static_cast<float>(torqueEma_ / std::max(0.05f, spec_.drivetrain.propReduction));
+    } else if (vehicleActive()) {
+        // 車両モード: プロペラシャフト回転 = 車輪回転 × 最終減速比
+        tel_.outputRpm = static_cast<float>(radToRpm(vehV_ / spec_.vehicle.wheelRadius * spec_.drivetrain.finalDrive));
+        tel_.outputTorqueNm = static_cast<float>(g > 0 ? torqueEma_ * gears[std::min<size_t>(g, gears.size()) - 1] : 0.0);
     } else if (spec_.family != Family::Turbine) {
         if (g > 0 && g <= static_cast<int>(gears.size())) {
             double ratio = gears[g - 1] * spec_.drivetrain.finalDrive;
@@ -641,8 +691,114 @@ void EngineSimulation::publishAudio() {
     feed_->running.store(tel_.running || tel_.rpm > 30);
 }
 
+bool EngineSimulation::vehicleActive() const {
+    return controls_.driveMode != 0 && !spec_.drivetrain.propeller && spec_.family != Family::Turbine &&
+           !spec_.drivetrain.gears.empty();
+}
+
+int EngineSimulation::effectiveGear() const {
+    int n = static_cast<int>(spec_.drivetrain.gears.size());
+    if (controls_.gear <= 0) return 0;
+    if (controls_.driveMode == 2) return std::clamp(autoGear_, 1, std::max(1, n));
+    return std::clamp(controls_.gear, 0, n);
+}
+
+double EngineSimulation::totalRatio(int g) const {
+    const auto& gs = spec_.drivetrain.gears;
+    if (g <= 0 || gs.empty()) return 0;
+    return gs[std::min<size_t>(g, gs.size()) - 1] * spec_.drivetrain.finalDrive;
+}
+
+void EngineSimulation::updateTransmission(double dt) {
+    shiftTimer_ += dt;
+    shiftCut_ = std::max(0.0, shiftCut_ - dt);
+    if (!vehicleActive()) { lastDriveMode_ = controls_.driveMode; return; }
+    const int n = static_cast<int>(spec_.drivetrain.gears.size());
+    const double r = spec_.vehicle.wheelRadius;
+    if (controls_.driveMode == 2) {
+        if (lastDriveMode_ != 2) { autoGear_ = 1; lockup_ = false; }
+        if (controls_.gear > 0 && n > 1) {
+            // 変速スケジュール: 入力軸回転 (車速 × 変速比) で判定。踏み込むほど高回転まで引っ張り、キックダウンも早い
+            double thr = throttle_;
+            double idle = spec_.idleRpm, red = spec_.redlineRpm;
+            double up = idle + (red * 0.93 - idle) * (0.28 + 0.7 * thr);
+            double down = idle * 1.25 + (red * 0.55 - idle * 1.25) * thr * thr;
+            double rpmIn = radToRpm(vehV_ / r * totalRatio(autoGear_));
+            if (shiftTimer_ > 0.9) {
+                if (rpmIn > up && autoGear_ < n) {
+                    ++autoGear_; ++shiftCount_; shiftTimer_ = 0; shiftCut_ = 0.12; lockup_ = false;
+                } else if (autoGear_ > 1 && rpmIn < down) {
+                    double predicted = rpmIn * totalRatio(autoGear_ - 1) / totalRatio(autoGear_);
+                    if (predicted < up * 0.92) { --autoGear_; ++shiftCount_; shiftTimer_ = 0; shiftCut_ = 0.12; lockup_ = false; }
+                }
+            }
+            // ロックアップ: 2 速以上で速度比が高いとき
+            double we = std::max(omega_, 1.0);
+            double sr = vehV_ / r * totalRatio(autoGear_) / we;
+            if (autoGear_ >= 2 && sr > 0.9 && thr < 0.9) lockup_ = true;
+            else if (sr < 0.8 || thr > 0.95) lockup_ = false;
+        }
+    } else {
+        if (controls_.gear != lastManualGear_) {
+            // MT: 変速操作中はクラッチを切る
+            if (lastManualGear_ != 0 || controls_.gear != 0) { ++shiftCount_; shiftCut_ = 0.18; }
+            lastManualGear_ = controls_.gear;
+        }
+        lockup_ = true;
+    }
+    lastDriveMode_ = controls_.driveMode;
+}
+
+double EngineSimulation::vehicleCoupling(double omegaE, double h) {
+    if (!vehicleActive()) return 0.0;
+    const VehicleDef& vd = spec_.vehicle;
+    const double m = vd.massKg, r = vd.wheelRadius;
+    const int g = effectiveGear();
+    const double ratio = totalRatio(g);
+    double tc = 0, tout = 0;
+    if (g > 0 && shiftCut_ <= 0) {
+        double wIn = vehV_ / r * ratio;
+        double slip = omegaE - wIn;
+        double peak = peakTorqueRef_;
+        double kLock = peak * 0.05;  // 締結時の剛性 [Nm/(rad/s)]
+        if (controls_.driveMode == 2 && !lockup_ && spec_.family != Family::Electric) {
+            // トルクコンバータ: 伝達トルクは滑りとポンプ回転に比例、ストール域でトルク増幅
+            double wIdle = rpmToRad(std::max(300.0f, spec_.idleRpm));
+            // 容量係数は自然吸気相当のトルクで決める (過給分でクリープが過大にならないように)
+            double naPeak = peak / (1.0 + 0.6 * spec_.induction.maxBoostBar);
+            tc = 0.0015 * naPeak * slip * std::max(omegaE, wIdle) / wIdle;
+            double sr = std::clamp(wIn / std::max(omegaE, 1.0), 0.0, 1.0);
+            tout = tc * (1.0 + 0.9 * (1.0 - sr));
+            slip_ = 1.0 - sr;
+        } else {
+            // 自動クラッチ: 低回転では伝達容量を絞ってエンストを防ぐ (半クラッチ)
+            double rpmE = radToRpm(omegaE);
+            double idle = spec_.family == Family::Electric ? 0.0 : spec_.idleRpm;
+            // アイドル付近ではクラッチを切る (停車してもエンストしない)
+            double cap = spec_.family == Family::Electric ? peak * 3.0
+                                                          : peak * 1.6 * std::clamp((rpmE - 0.95 * idle) / 1500.0, 0.0, 1.0);
+            tc = std::clamp(kLock * slip, -cap, cap);
+            tout = tc;
+            slip_ = std::clamp(std::fabs(slip) / std::max(omegaE, 1.0), 0.0, 1.0);
+        }
+    }
+    // 車両の運動: m dv/dt = 駆動力 − 転がり − 空気 − 勾配 − ブレーキ
+    double v = vehV_;
+    double drive = tout * ratio * 0.92 / r;
+    double roll = v > 0.05 ? vd.rollingCoeff * m * 9.81 : 0.0;
+    double aero = 0.5 * 1.2 * vd.cdA * v * v;
+    double grade = m * 9.81 * 0.15 * std::clamp(controls_.grade, 0.0f, 1.0f);
+    double brake = v > 0.01 ? std::clamp(controls_.brake, 0.0f, 1.0f) * 0.95 * m * 9.81 : 0.0;
+    double mEff = m * 1.04;  // 車輪等の回転慣性分
+    vehV_ = std::max(0.0, v + (drive - roll - aero - grade - brake) / mEff * h);
+    vehDist_ += vehV_ * h;
+    return tc;
+}
+
 void EngineSimulation::step(double dt) {
     dt = std::clamp(dt, 1e-4, 0.05);
+    simTime_ += dt;
+    updateTransmission(dt);
     switch (spec_.family) {
         case Family::Reciprocating:
         case Family::Wankel: stepReciprocating(dt); break;

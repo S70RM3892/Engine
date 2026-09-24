@@ -10,6 +10,7 @@ set(SRC ${CMAKE_CURRENT_SOURCE_DIR}/../app/src/main/cpp)
 add_library(escore STATIC
   ${SRC}/core/Json.cpp
   ${SRC}/core/EngineSpec.cpp
+  ${SRC}/core/CustomEngine.cpp
   ${SRC}/sim/EngineKinematics.cpp
   ${SRC}/sim/EngineSimulation.cpp
   ${SRC}/audio/EngineAcousticsDSP.cpp)

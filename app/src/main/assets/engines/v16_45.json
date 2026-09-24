@@ -48,5 +48,8 @@
       0.6
     ]
   },
-  "family": "reciprocating"
+  "family": "reciprocating",
+  "vehicle": {
+    "massKg": 2600
+  }
 }

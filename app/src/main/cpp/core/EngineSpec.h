@@ -124,6 +124,21 @@ struct ExhaustDef {
     float gasSpeedOfSound = 520.0f;    // 高温排気中の音速近似
 };
 
+struct VehicleDef {
+    float massKg = 1400;
+    float wheelRadius = 0.32f;
+    float cdA = 0.65f;          // 空気抵抗係数 × 前面投影面積 [m^2]
+    float rollingCoeff = 0.012f;
+};
+
+// ゲームのアップグレード等で使う補正係数 (シミュレータでは既定値 1)
+struct TuningDef {
+    float frictionScale = 1.0f;
+    float backpressureScale = 1.0f;
+    float coolingScale = 1.0f;
+    float breathingScale = 1.0f;  // 吸排気の流れやすさ (ポート研磨/ハイカム)
+};
+
 struct DrivetrainDef {
     std::vector<float> gears{3.6f, 2.1f, 1.45f, 1.1f, 0.87f, 0.72f};
     float finalDrive = 3.9f;
@@ -166,6 +181,8 @@ struct EngineSpec {
     InductionDef induction;
     ExhaustDef exhaust;
     DrivetrainDef drivetrain;
+    VehicleDef vehicle;
+    TuningDef tuning;
 
     float cycleDeg() const {
         switch (cycle) {

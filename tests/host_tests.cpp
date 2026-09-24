@@ -2,6 +2,7 @@
 // 物理的な妥当性 (有限値・アイドル安定・幾何拘束) をチェックする。
 #include <cmath>
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -9,6 +10,7 @@
 #include <vector>
 
 #include "audio/EngineAcousticsDSP.h"
+#include "core/CustomEngine.h"
 #include "core/EngineSpec.h"
 #include "core/Json.h"
 #include "sim/EngineSimulation.h"
@@ -109,9 +111,86 @@ static RunResult runAt(EngineSimulation& sim, float target, float load, double s
     return {tl.rpm, tl.torqueNm, tl.powerKW, tl.efficiency};
 }
 
+
+// カスタム n 気筒: 各レイアウト・気筒数で生成→読込→(4 スト/2 スト)等間隔点火を確認
+static void testCustomEngines() {
+    struct Case { const char* layout; int nMin, nMax, step; const char* cycle; bool expectEven; };
+    const Case cases[] = {{"inline", 1, 16, 1, "otto4", true}, {"inline", 1, 8, 1, "otto2", true},
+                          {"v", 2, 24, 2, "otto4", true},      {"flat", 2, 16, 2, "otto4", true},
+                          {"radial", 3, 11, 1, "otto4", false}, {"opposed", 1, 12, 1, "diesel2", false},
+                          {"wankel", 1, 4, 1, "otto4", false}};
+    int count = 0;
+    for (const Case& cs : cases) {
+        for (int n = cs.nMin; n <= cs.nMax; n += cs.step) {
+            for (float bank : {60.0f, 90.0f}) {
+                if (std::string(cs.layout) != "v" && bank != 60.0f) continue;
+                CustomEngineParams p;
+                p.layout = cs.layout;
+                p.cylinders = n;
+                p.cycle = cs.cycle;
+                p.bankAngle = bank;
+                p.rows = std::string(cs.layout) == "radial" ? 2 : 1;
+                std::string json, err;
+                if (!buildCustomEngineJson(p, json, err)) { CHECK(false, "custom %s %d: %s", cs.layout, n, err.c_str()); continue; }
+                EngineSpec spec;
+                if (!loadEngineSpecFromText(json, spec, err)) { CHECK(false, "custom load %s %d: %s", cs.layout, n, err.c_str()); continue; }
+                ++count;
+                if (cs.expectEven && n > 1) {
+                    std::vector<double> f;
+                    for (auto& ch : spec.chambers) f.push_back(ch.firingDeg);
+                    std::sort(f.begin(), f.end());
+                    double per = spec.cycleDeg(), ideal = per / f.size(), worst = 0;
+                    for (size_t k = 0; k < f.size(); ++k) {
+                        double iv = (k + 1 < f.size() ? f[k + 1] : f[0] + per) - f[k];
+                        worst = std::fmax(worst, std::fabs(iv - ideal));
+                    }
+                    CHECK(worst < 1.0, "custom %s %s n=%d bank=%.0f uneven firing (dev %.1f deg)", cs.layout, cs.cycle, n, bank, worst);
+                }
+                AudioFeed feed;
+                EngineSimulation sim;
+                sim.init(spec, &feed);
+                RunResult r = runAt(sim, spec.redlineRpm * 0.6f, 0.2f, 2.0);
+                CHECK(std::isfinite(r.torque) && r.rpm > 0.2f * spec.redlineRpm, "custom %s n=%d run rpm %f", cs.layout, n, r.rpm);
+            }
+        }
+    }
+    std::printf("custom engines generated & simulated: %d\n", count);
+}
+
+// 車両モード: AT/MT で発進し、ブレーキ停止後もエンストしないこと
+static void testVehicle(const EngineSpec& spec, const std::string& id) {
+    if (spec.drivetrain.propeller || spec.family == Family::Turbine || !spec.drivetrain.hasGearbox) return;
+    for (int mode : {1, 2}) {
+        AudioFeed feed;
+        EngineSimulation sim;
+        sim.init(spec, &feed);
+        Controls c = sim.controls();
+        c.driveMode = mode; c.gear = 1; c.throttleLink = false; c.throttle = 1.0f;
+        if (spec.family == Family::Electric) c.targetRpm = 0;
+        sim.setControls(c);
+        int cd = 0;
+        for (int i = 0; i < 60 * 12; ++i) {
+            const Telemetry& t = sim.telemetry();
+            if (mode == 1 && --cd <= 0 && t.rpm > spec.redlineRpm * 0.93f && c.gear < static_cast<int>(spec.drivetrain.gears.size())) {
+                ++c.gear; sim.setControls(c); cd = 40;
+            }
+            sim.step(1 / 60.0);
+        }
+        float v = sim.telemetry().speedKmh;
+        CHECK(std::isfinite(v) && v > 30, "%s vehicle mode %d speed %f", id.c_str(), mode, v);
+        c.throttle = 0; c.brake = 1; sim.setControls(c);
+        for (int i = 0; i < 60 * 12; ++i) sim.step(1 / 60.0);
+        float rpm = sim.telemetry().rpm;
+        CHECK(sim.telemetry().speedKmh < 0.5f, "%s mode %d did not stop", id.c_str(), mode);
+        if (spec.family != Family::Electric && spec.cycle != Cycle::Steam && spec.cycle != Cycle::Stirling)
+            CHECK(rpm > 0.6f * spec.idleRpm, "%s mode %d stalled at stop (%f rpm)", id.c_str(), mode, rpm);
+    }
+}
+
 int main(int argc, char** argv) {
     bool wav = argc > 1 && std::strcmp(argv[1], "--wav") == 0;
     testSliderCrank();
+    testCustomEngines();
     JsonValue idx;
     std::string err;
     CHECK(parseJson(readFile(std::string(ASSET_DIR) + "/index.json"), idx, err), "index: %s", err.c_str());
@@ -127,6 +206,7 @@ int main(int argc, char** argv) {
             continue;
         }
         if (spec.family == Family::Reciprocating) testRodLengthConstraint(spec, id);
+        testVehicle(spec, id);
         AudioFeed feed;
         EngineSimulation sim;
         sim.init(spec, &feed);

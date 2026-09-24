@@ -37,5 +37,8 @@
     "tailpipeLength": 2.0,
     "mufflerVolume": 0.03
   },
-  "family": "reciprocating"
+  "family": "reciprocating",
+  "vehicle": {
+    "massKg": 1650
+  }
 }

@@ -23,5 +23,8 @@
       9.0
     ],
     "finalDrive": 1.0
+  },
+  "vehicle": {
+    "massKg": 1800
   }
 }

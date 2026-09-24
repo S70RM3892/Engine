@@ -40,6 +40,12 @@ public:
     float pistonLoadFraction(int p, double thetaDeg) const;
     float pistonTempK() const { return pistonTempK_; }
     float headTempK() const { return headTempK_; }
+    // 演出用: 燃焼室 c の直近の排気弁開イベント (シミュレーション時刻 [s], 強さ [bar])
+    double simTime() const { return simTime_; }
+    double lastExhaustTime(int c) const { return c < static_cast<int>(lastEvoTime_.size()) ? lastEvoTime_[c] : -1.0; }
+    float lastExhaustAmp(int c) const { return c < static_cast<int>(lastEvoAmp_.size()) ? lastEvoAmp_[c] : 0.0f; }
+    bool vehicleActive() const;
+    int effectiveGear() const;
 
 private:
     struct ChamberState {
@@ -59,7 +65,9 @@ private:
     double stepChamber(int c, double theta0, double theta1, double h, double& qReleased);
     void stirlingPressure();
     double governor(double dt);
+    double idleControl(double dt);
     double frictionTorque() const;
+    double frictionTorqueBase() const;
     double exhaustBackPressure() const;
     void publishAudio();
 
@@ -76,7 +84,7 @@ private:
     double visTheta_ = 0;
     float visSpool_[6] = {0, 0, 0, 0, 0, 0};
 
-    double throttle_ = 0, govInteg_ = 0, govPrevRpm_ = 0, govRate_ = 0;
+    double throttle_ = 0, govInteg_ = 0, govPrevRpm_ = 0, govRate_ = 0, iscInteg_ = 0.05;
     double map_ = 1.0e5, boost_ = 0, turboFrac_ = 0, prevThrottle_ = 0;
     uint32_t bovCount_ = 0;
     double coolantK_ = 355, oilK_ = 365, egtK_ = 700;
@@ -93,6 +101,18 @@ private:
     double motorTorque_ = 0;
     // スターリング
     double stirlingMass_ = 0, stirlingHotK_ = 900;
+    // 車両 / 変速機
+    double vehicleCoupling(double omegaE, double h);
+    void updateTransmission(double dt);
+    double totalRatio(int gear) const;
+    double vehV_ = 0, vehDist_ = 0;
+    int autoGear_ = 1, lastManualGear_ = 0, lastDriveMode_ = 0;
+    double shiftTimer_ = 0, shiftCut_ = 0, slip_ = 0;
+    bool lockup_ = false;
+    uint32_t shiftCount_ = 0, afterfireCount_ = 0, afterfireSeed_ = 12345;
+    double simTime_ = 0;
+    std::vector<double> lastEvoTime_;
+    std::vector<float> lastEvoAmp_;
     double outputAngleRate_ = 0;
 };
 

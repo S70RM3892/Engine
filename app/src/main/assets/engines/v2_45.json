@@ -48,5 +48,10 @@
     ],
     "finalDrive": 3.2
   },
-  "family": "reciprocating"
+  "family": "reciprocating",
+  "vehicle": {
+    "massKg": 300,
+    "wheelRadius": 0.32,
+    "cdA": 0.5
+  }
 }

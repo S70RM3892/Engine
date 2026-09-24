@@ -41,5 +41,8 @@
     ],
     "finalDrive": 4.0
   },
-  "family": "reciprocating"
+  "family": "reciprocating",
+  "vehicle": {
+    "massKg": 1100
+  }
 }

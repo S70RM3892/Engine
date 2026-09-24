@@ -21,6 +21,9 @@ struct Controls {
     int gear = 0;                 // 0 = N, 1.. = 前進段
     float timeScale = 1.0f;       // 映像のみのスローモーション倍率
     uint64_t cylinderCutMask = 0; // ビットが立った気筒 (燃焼室番号-1) を失火させる
+    int driveMode = 0;            // 0 = ダイナモ (台上), 1 = 車両 MT, 2 = 車両 AT (オートマ)
+    float brake = 0.0f;           // 車両ブレーキ (0..1)
+    float grade = 0.0f;           // 路面勾配 (0..1 → 0..15%)
 };
 
 struct Telemetry {
@@ -37,6 +40,15 @@ struct Telemetry {
     float loadNm = 0;
     bool limiter = false, running = false;
     float thetaDeg = 0;
+    // 車両
+    float speedKmh = 0;
+    int effectiveGear = 0;          // 実際に噛み合っている段 (AT では自動選択された段)
+    bool shifting = false;
+    bool lockup = false;
+    float slipRatio = 0;            // トルコン/クラッチ滑り (0..1)
+    uint32_t shiftCount = 0;
+    uint32_t afterfireCount = 0;    // 燃料カット/リミッタ時の後燃え (演出用)
+    float distanceM = 0;
 };
 
 // オーディオスレッド向け (lock-free)
@@ -55,6 +67,8 @@ struct AudioFeed {
     std::atomic<float> slip{0};
     std::atomic<int> gear{0};
     std::atomic<uint32_t> bovCount{0};
+    std::atomic<uint32_t> shiftCount{0};
+    std::atomic<uint32_t> afterfireCount{0};
     std::atomic<bool> running{false};
     std::atomic<float> cameraYaw{0};
     std::atomic<float> masterGain{0.8f};
