@@ -1,0 +1,42 @@
+{
+  "id": "v4_90",
+  "name": "V型4気筒 90° 800cc",
+  "category": "V型 (V-Engine)",
+  "description": "90°V4 (180°クランク)。不等間隔点火のうなり。",
+  "bore": 0.072,
+  "stroke": 0.048,
+  "rodLength": 0.1,
+  "compressionRatio": 11.8,
+  "idleRpm": 1200,
+  "redlineRpm": 12000,
+  "inertia": 0.05,
+  "layout": {
+    "type": "v",
+    "count": 4,
+    "bankAngle": 90,
+    "throwAngles": [
+      0,
+      180
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ]
+  },
+  "drivetrain": {
+    "gears": [
+      2.8,
+      2.0,
+      1.6,
+      1.35,
+      1.2,
+      1.05
+    ],
+    "finalDrive": 2.9
+  },
+  "family": "reciprocating"
+}

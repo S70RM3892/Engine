@@ -1,0 +1,39 @@
+{
+  "id": "r3",
+  "name": "単列星型3気筒",
+  "category": "星型 (Radial)",
+  "description": "マスターロッド1本+アーティキュレーテッドロッド2本。奇数気筒で1回転おきの等間隔点火。",
+  "bore": 0.105,
+  "stroke": 0.11,
+  "rodLength": 0.23,
+  "compressionRatio": 5.5,
+  "idleRpm": 500,
+  "redlineRpm": 2400,
+  "inertia": 0.6,
+  "valvetrain": {
+    "type": "OHV",
+    "intakeValves": 1,
+    "exhaustValves": 1
+  },
+  "layout": {
+    "type": "radial",
+    "perRow": 3,
+    "rows": 1
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.4,
+      0.4,
+      0.4
+    ],
+    "tailpipeLength": 0.4,
+    "mufflerVolume": 0.004
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 1.0,
+    "blades": 2,
+    "diameter": 1.9
+  },
+  "family": "reciprocating"
+}

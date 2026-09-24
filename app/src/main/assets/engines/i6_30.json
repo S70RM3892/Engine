@@ -1,0 +1,44 @@
+{
+  "id": "i6_30",
+  "name": "直列6気筒 3.0L",
+  "category": "直列 (Inline)",
+  "description": "完全バランス (1次/2次とも釣り合い)。点火順序 1-5-3-6-2-4。",
+  "bore": 0.084,
+  "stroke": 0.09,
+  "rodLength": 0.135,
+  "compressionRatio": 10.5,
+  "idleRpm": 700,
+  "redlineRpm": 7200,
+  "inertia": 0.18,
+  "layout": {
+    "type": "inline",
+    "count": 6,
+    "throwAngles": [
+      0,
+      240,
+      120,
+      120,
+      240,
+      0
+    ]
+  },
+  "firingOrder": [
+    1,
+    5,
+    3,
+    6,
+    2,
+    4
+  ],
+  "exhaust": {
+    "runnerLengths": [
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ]
+  },
+  "family": "reciprocating"
+}

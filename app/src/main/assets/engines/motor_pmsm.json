@@ -1,0 +1,27 @@
+{
+  "id": "motor_pmsm",
+  "name": "永久磁石同期モータ (PMSM) 210kW",
+  "category": "電動機 (Electric Motor)",
+  "description": "3極対・インバータ PWM 10kHz。定トルク→定出力特性。",
+  "family": "electric",
+  "idleRpm": 0,
+  "redlineRpm": 17900,
+  "inertia": 0.08,
+  "motor": {
+    "kind": "pmsm",
+    "polePairs": 3,
+    "statorSlots": 54,
+    "pwmHz": 10000,
+    "ratedTorque": 420,
+    "ratedPowerW": 211000,
+    "maxRpm": 17900,
+    "radius": 0.11,
+    "length": 0.16
+  },
+  "drivetrain": {
+    "gears": [
+      9.0
+    ],
+    "finalDrive": 1.0
+  }
+}

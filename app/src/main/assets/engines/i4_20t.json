@@ -1,0 +1,49 @@
+{
+  "id": "i4_20t",
+  "name": "直列4気筒 2.0L ターボ",
+  "category": "直列 (Inline)",
+  "description": "シングルターボ最大1.3bar。スプール遅れとブローオフバルブ音を再現。",
+  "bore": 0.086,
+  "stroke": 0.086,
+  "rodLength": 0.145,
+  "compressionRatio": 9.5,
+  "idleRpm": 750,
+  "redlineRpm": 6800,
+  "inertia": 0.15,
+  "sparkAdvance": 16,
+  "layout": {
+    "type": "inline",
+    "count": 4,
+    "throwAngles": [
+      0,
+      180,
+      180,
+      0
+    ]
+  },
+  "firingOrder": [
+    1,
+    3,
+    4,
+    2
+  ],
+  "induction": {
+    "type": "turbo",
+    "maxBoostBar": 1.3,
+    "compressorBlades": 12,
+    "maxRpm": 190000,
+    "spoolTime": 0.9
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.35,
+      0.35,
+      0.35,
+      0.35
+    ],
+    "collectorLength": 0.3,
+    "tailpipeLength": 2.0,
+    "mufflerVolume": 0.03
+  },
+  "family": "reciprocating"
+}

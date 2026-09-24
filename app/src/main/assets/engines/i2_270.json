@@ -1,0 +1,43 @@
+{
+  "id": "i2_270",
+  "name": "並列2気筒 700cc 270°クランク",
+  "category": "直列 (Inline)",
+  "description": "270°クランクで 270°/450° の不等間隔点火 (Vツイン風の鼓動)。",
+  "bore": 0.08,
+  "stroke": 0.0698,
+  "rodLength": 0.12,
+  "compressionRatio": 11.5,
+  "idleRpm": 1250,
+  "redlineRpm": 9500,
+  "inertia": 0.04,
+  "reciprocatingMass": 0.35,
+  "layout": {
+    "type": "inline",
+    "count": 2,
+    "throwAngles": [
+      0,
+      270
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.8,
+      0.8
+    ],
+    "collectorLength": 0.4,
+    "tailpipeLength": 0.6,
+    "mufflerVolume": 0.008
+  },
+  "drivetrain": {
+    "gears": [
+      2.8,
+      2.0,
+      1.6,
+      1.3,
+      1.1,
+      0.95
+    ],
+    "finalDrive": 3.0
+  },
+  "family": "reciprocating"
+}

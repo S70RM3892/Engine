@@ -1,0 +1,50 @@
+{
+  "id": "b4_20",
+  "name": "水平対向4気筒 2.0L (不等長エキマニ)",
+  "category": "水平対向 (Boxer)",
+  "description": "点火順序 1-3-2-4。不等長エキマニ特有の「ドコドコ」脈動。",
+  "bore": 0.092,
+  "stroke": 0.075,
+  "rodLength": 0.1305,
+  "compressionRatio": 8.0,
+  "idleRpm": 750,
+  "redlineRpm": 7200,
+  "inertia": 0.15,
+  "layout": {
+    "type": "flat",
+    "count": 4,
+    "throwAngles": [
+      0,
+      180,
+      180,
+      0
+    ],
+    "sides": [
+      1,
+      -1,
+      1,
+      -1
+    ]
+  },
+  "firingOrder": [
+    1,
+    3,
+    2,
+    4
+  ],
+  "induction": {
+    "type": "turbo",
+    "maxBoostBar": 1.0
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.35,
+      0.75,
+      0.35,
+      0.75
+    ],
+    "collectorLength": 0.4,
+    "tailpipeLength": 2.0
+  },
+  "family": "reciprocating"
+}

@@ -1,0 +1,36 @@
+{
+  "id": "wankel3_20b",
+  "name": "ヴァンケル 3ローター 2.0L (20B 級)",
+  "category": "ロータリー (Wankel)",
+  "description": "120°毎の点火。ターボ過給。",
+  "family": "wankel",
+  "compressionRatio": 9.0,
+  "idleRpm": 800,
+  "redlineRpm": 8000,
+  "inertia": 0.12,
+  "sparkAdvance": 10,
+  "burnDuration": 90,
+  "wankel": {
+    "rotors": 3,
+    "rotorPhases": [
+      0,
+      240,
+      120
+    ],
+    "eccentricity": 0.015,
+    "generatingRadius": 0.105,
+    "width": 0.08
+  },
+  "induction": {
+    "type": "turbo",
+    "maxBoostBar": 0.8
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.4,
+      0.4,
+      0.4
+    ],
+    "tailpipeLength": 2.0
+  }
+}

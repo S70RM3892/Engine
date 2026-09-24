@@ -1,0 +1,43 @@
+{
+  "id": "b2_1200",
+  "name": "水平対向2気筒 1.2L",
+  "category": "水平対向 (Boxer)",
+  "description": "対向ピストンが同位相で外側へ離接。360°等間隔点火。",
+  "bore": 0.101,
+  "stroke": 0.073,
+  "rodLength": 0.125,
+  "compressionRatio": 12.5,
+  "idleRpm": 1000,
+  "redlineRpm": 8000,
+  "inertia": 0.07,
+  "layout": {
+    "type": "flat",
+    "count": 2,
+    "throwAngles": [
+      0,
+      180
+    ],
+    "sides": [
+      1,
+      -1
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.9,
+      0.9
+    ]
+  },
+  "drivetrain": {
+    "gears": [
+      2.4,
+      1.8,
+      1.4,
+      1.2,
+      1.0,
+      0.9
+    ],
+    "finalDrive": 2.9
+  },
+  "family": "reciprocating"
+}

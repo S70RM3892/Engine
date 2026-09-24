@@ -1,0 +1,77 @@
+{
+  "id": "r28_r4360",
+  "name": "4列星型28気筒 71L (R-4360 級)",
+  "category": "星型 (Radial)",
+  "description": "4列×7気筒をらせん状にずらした「コーンコブ」。",
+  "bore": 0.14604999999999999,
+  "stroke": 0.15239999999999998,
+  "rodLength": 0.29,
+  "compressionRatio": 6.7,
+  "idleRpm": 600,
+  "redlineRpm": 2700,
+  "inertia": 9.0,
+  "reciprocatingMass": 3.0,
+  "valvetrain": {
+    "type": "OHV",
+    "intakeValves": 1,
+    "exhaustValves": 1
+  },
+  "layout": {
+    "type": "radial",
+    "perRow": 7,
+    "rows": 4,
+    "rowThrowAngles": [
+      0,
+      180,
+      90,
+      270
+    ],
+    "rowStagger": 12.857
+  },
+  "induction": {
+    "type": "roots",
+    "maxBoostBar": 0.6,
+    "driveRatio": 6.4,
+    "lobes": 2
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "tailpipeLength": 0.6
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 0.425,
+    "blades": 4,
+    "diameter": 4.2
+  },
+  "family": "reciprocating"
+}

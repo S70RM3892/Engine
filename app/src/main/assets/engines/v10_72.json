@@ -1,0 +1,41 @@
+{
+  "id": "v10_72",
+  "name": "V型10気筒 72° 5.0L",
+  "category": "V型 (V-Engine)",
+  "description": "72°バンク・72°間隔ピンで等間隔点火。高回転の咆哮。",
+  "bore": 0.092,
+  "stroke": 0.075,
+  "rodLength": 0.135,
+  "compressionRatio": 12.0,
+  "idleRpm": 1000,
+  "redlineRpm": 8700,
+  "inertia": 0.18,
+  "layout": {
+    "type": "v",
+    "count": 10,
+    "bankAngle": 72,
+    "throwAngles": [
+      0,
+      72,
+      144,
+      216,
+      288
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "tailpipeLength": 1.3
+  },
+  "family": "reciprocating"
+}

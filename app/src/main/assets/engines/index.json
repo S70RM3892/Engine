@@ -1,0 +1,262 @@
+{
+  "engines": [
+    {
+      "file": "i1_250.json",
+      "id": "i1_250",
+      "name": "単気筒 250cc DOHC",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i1_2st_125.json",
+      "id": "i1_2st_125",
+      "name": "単気筒 125cc 2ストローク",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i2_270.json",
+      "id": "i2_270",
+      "name": "並列2気筒 700cc 270°クランク",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i3_1200.json",
+      "id": "i3_1200",
+      "name": "直列3気筒 1.2L",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i4_20.json",
+      "id": "i4_20",
+      "name": "直列4気筒 2.0L NA",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i4_20t.json",
+      "id": "i4_20t",
+      "name": "直列4気筒 2.0L ターボ",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i4_tdi.json",
+      "id": "i4_tdi",
+      "name": "直列4気筒 2.0L ディーゼルターボ",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i5_25.json",
+      "id": "i5_25",
+      "name": "直列5気筒 2.5L",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i6_30.json",
+      "id": "i6_30",
+      "name": "直列6気筒 3.0L",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "i8_straight.json",
+      "id": "i8_straight",
+      "name": "直列8気筒 4.0L",
+      "category": "直列 (Inline)"
+    },
+    {
+      "file": "v2_45.json",
+      "id": "v2_45",
+      "name": "V型2気筒 45° 1.8L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v4_90.json",
+      "id": "v4_90",
+      "name": "V型4気筒 90° 800cc",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v6_60.json",
+      "id": "v6_60",
+      "name": "V型6気筒 60° 3.5L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v8_cross.json",
+      "id": "v8_cross",
+      "name": "V型8気筒 90° クロスプレーン 5.0L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v8_flat.json",
+      "id": "v8_flat",
+      "name": "V型8気筒 90° フラットプレーン 4.5L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v8_sc.json",
+      "id": "v8_sc",
+      "name": "V型8気筒 6.2L スーパーチャージャー",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v10_72.json",
+      "id": "v10_72",
+      "name": "V型10気筒 72° 5.0L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v12_60.json",
+      "id": "v12_60",
+      "name": "V型12気筒 60° 6.0L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "v16_45.json",
+      "id": "v16_45",
+      "name": "V型16気筒 45° 7.4L",
+      "category": "V型 (V-Engine)"
+    },
+    {
+      "file": "b2_1200.json",
+      "id": "b2_1200",
+      "name": "水平対向2気筒 1.2L",
+      "category": "水平対向 (Boxer)"
+    },
+    {
+      "file": "b4_20.json",
+      "id": "b4_20",
+      "name": "水平対向4気筒 2.0L (不等長エキマニ)",
+      "category": "水平対向 (Boxer)"
+    },
+    {
+      "file": "b6_30.json",
+      "id": "b6_30",
+      "name": "水平対向6気筒 3.0L",
+      "category": "水平対向 (Boxer)"
+    },
+    {
+      "file": "r3.json",
+      "id": "r3",
+      "name": "単列星型3気筒",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "r5.json",
+      "id": "r5",
+      "name": "単列星型5気筒 (キナー K-5 級)",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "r7.json",
+      "id": "r7",
+      "name": "単列星型7気筒",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "r9_r1820.json",
+      "id": "r9_r1820",
+      "name": "単列星型9気筒 29.9L (R-1820 級)",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "r14_r1830.json",
+      "id": "r14_r1830",
+      "name": "複列星型14気筒 30L (R-1830 級)",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "r18_r2800.json",
+      "id": "r18_r2800",
+      "name": "複列星型18気筒 46L (R-2800 級)",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "r28_r4360.json",
+      "id": "r28_r4360",
+      "name": "4列星型28気筒 71L (R-4360 級)",
+      "category": "星型 (Radial)"
+    },
+    {
+      "file": "wankel1.json",
+      "id": "wankel1",
+      "name": "ヴァンケル 1ローター 500cc",
+      "category": "ロータリー (Wankel)"
+    },
+    {
+      "file": "wankel2_13b.json",
+      "id": "wankel2_13b",
+      "name": "ヴァンケル 2ローター 1.3L (13B 級)",
+      "category": "ロータリー (Wankel)"
+    },
+    {
+      "file": "wankel3_20b.json",
+      "id": "wankel3_20b",
+      "name": "ヴァンケル 3ローター 2.0L (20B 級)",
+      "category": "ロータリー (Wankel)"
+    },
+    {
+      "file": "wankel4_26b.json",
+      "id": "wankel4_26b",
+      "name": "ヴァンケル 4ローター 2.6L (R26B 級)",
+      "category": "ロータリー (Wankel)"
+    },
+    {
+      "file": "deltic18.json",
+      "id": "deltic18",
+      "name": "ネイピア デルティック 18気筒 88L",
+      "category": "対向ピストン (Opposed-Piston)"
+    },
+    {
+      "file": "jumo205.json",
+      "id": "jumo205",
+      "name": "ユンカース Jumo 205 6気筒 16.6L",
+      "category": "対向ピストン (Opposed-Piston)"
+    },
+    {
+      "file": "steam_mill.json",
+      "id": "steam_mill",
+      "name": "単気筒複動 蒸気機関 (工場用)",
+      "category": "外燃機関 (External Combustion)"
+    },
+    {
+      "file": "steam_loco.json",
+      "id": "steam_loco",
+      "name": "2気筒複動 蒸気機関車",
+      "category": "外燃機関 (External Combustion)"
+    },
+    {
+      "file": "stirling_alpha.json",
+      "id": "stirling_alpha",
+      "name": "α型スターリングエンジン",
+      "category": "外燃機関 (External Combustion)"
+    },
+    {
+      "file": "turbojet.json",
+      "id": "turbojet",
+      "name": "ターボジェット (J85 級)",
+      "category": "航空タービン (Gas Turbine)"
+    },
+    {
+      "file": "turbofan.json",
+      "id": "turbofan",
+      "name": "高バイパス ターボファン (CFM56 級)",
+      "category": "航空タービン (Gas Turbine)"
+    },
+    {
+      "file": "turboshaft.json",
+      "id": "turboshaft",
+      "name": "ターボシャフト (T700 級)",
+      "category": "航空タービン (Gas Turbine)"
+    },
+    {
+      "file": "motor_pmsm.json",
+      "id": "motor_pmsm",
+      "name": "永久磁石同期モータ (PMSM) 210kW",
+      "category": "電動機 (Electric Motor)"
+    },
+    {
+      "file": "motor_induction.json",
+      "id": "motor_induction",
+      "name": "三相誘導モータ 190kW",
+      "category": "電動機 (Electric Motor)"
+    }
+  ]
+}

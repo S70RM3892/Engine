@@ -1,0 +1,35 @@
+{
+  "id": "wankel4_26b",
+  "name": "ヴァンケル 4ローター 2.6L (R26B 級)",
+  "category": "ロータリー (Wankel)",
+  "description": "ル・マン優勝車級。90°毎の点火、高回転の甲高い咆哮。",
+  "family": "wankel",
+  "compressionRatio": 10.0,
+  "idleRpm": 1500,
+  "redlineRpm": 9000,
+  "inertia": 0.12,
+  "sparkAdvance": 12,
+  "burnDuration": 85,
+  "wankel": {
+    "rotors": 4,
+    "rotorPhases": [
+      0,
+      180,
+      90,
+      270
+    ],
+    "eccentricity": 0.015,
+    "generatingRadius": 0.105,
+    "width": 0.08
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.35,
+      0.35,
+      0.35,
+      0.35
+    ],
+    "tailpipeLength": 1.0,
+    "mufflerVolume": 0.005
+  }
+}

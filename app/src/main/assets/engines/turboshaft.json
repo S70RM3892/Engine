@@ -1,0 +1,24 @@
+{
+  "id": "turboshaft",
+  "name": "ターボシャフト (T700 級)",
+  "category": "航空タービン (Gas Turbine)",
+  "description": "ガスジェネレータ + フリーパワータービン → 減速機で出力軸へ。",
+  "family": "turbine",
+  "idleRpm": 28000,
+  "redlineRpm": 44700,
+  "inertia": 1.0,
+  "turbine": {
+    "kind": "turboshaft",
+    "compressorStages": 6,
+    "turbineStages": 4,
+    "compressorBlades": 30,
+    "n1MaxRpm": 20900,
+    "n2MaxRpm": 44700,
+    "maxThrustN": 2000,
+    "maxShaftPowerW": 1400000,
+    "spoolTime": 1.5,
+    "length": 1.2,
+    "radius": 0.3,
+    "outputReduction": 81.0
+  }
+}

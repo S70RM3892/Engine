@@ -1,0 +1,64 @@
+{
+  "id": "r18_r2800",
+  "name": "複列星型18気筒 46L (R-2800 級)",
+  "category": "星型 (Radial)",
+  "description": "2列×9気筒。大戦期戦闘機の主力エンジン級。",
+  "bore": 0.14604999999999999,
+  "stroke": 0.15239999999999998,
+  "rodLength": 0.29,
+  "compressionRatio": 6.65,
+  "idleRpm": 600,
+  "redlineRpm": 2700,
+  "inertia": 6.0,
+  "reciprocatingMass": 3.0,
+  "valvetrain": {
+    "type": "OHV",
+    "intakeValves": 1,
+    "exhaustValves": 1
+  },
+  "layout": {
+    "type": "radial",
+    "perRow": 9,
+    "rows": 2,
+    "rowThrowAngles": [
+      0,
+      180
+    ]
+  },
+  "induction": {
+    "type": "roots",
+    "maxBoostBar": 0.6,
+    "driveRatio": 7.6,
+    "lobes": 2
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "tailpipeLength": 0.6
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 0.5,
+    "blades": 4,
+    "diameter": 4.0
+  },
+  "family": "reciprocating"
+}

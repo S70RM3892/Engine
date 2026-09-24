@@ -1,0 +1,43 @@
+{
+  "id": "r7",
+  "name": "単列星型7気筒",
+  "category": "星型 (Radial)",
+  "description": "7気筒・点火順序 1-3-5-7-2-4-6。",
+  "bore": 0.108,
+  "stroke": 0.108,
+  "rodLength": 0.215,
+  "compressionRatio": 5.5,
+  "idleRpm": 500,
+  "redlineRpm": 2200,
+  "inertia": 0.9,
+  "valvetrain": {
+    "type": "OHV",
+    "intakeValves": 1,
+    "exhaustValves": 1
+  },
+  "layout": {
+    "type": "radial",
+    "perRow": 7,
+    "rows": 1
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.3,
+      0.3,
+      0.3,
+      0.3,
+      0.3,
+      0.3,
+      0.3
+    ],
+    "tailpipeLength": 0.3,
+    "mufflerVolume": 0.003
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 1.0,
+    "blades": 2,
+    "diameter": 2.4
+  },
+  "family": "reciprocating"
+}

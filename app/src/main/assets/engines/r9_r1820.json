@@ -1,0 +1,52 @@
+{
+  "id": "r9_r1820",
+  "name": "単列星型9気筒 29.9L (R-1820 級)",
+  "category": "星型 (Radial)",
+  "description": "ライト R-1820 相当の諸元。減速ギア 16:11 でプロペラ駆動。",
+  "bore": 0.155575,
+  "stroke": 0.174625,
+  "rodLength": 0.33,
+  "compressionRatio": 6.45,
+  "idleRpm": 600,
+  "redlineRpm": 2500,
+  "inertia": 3.5,
+  "reciprocatingMass": 3.0,
+  "valvetrain": {
+    "type": "OHV",
+    "intakeValves": 1,
+    "exhaustValves": 1
+  },
+  "layout": {
+    "type": "radial",
+    "perRow": 9,
+    "rows": 1
+  },
+  "induction": {
+    "type": "roots",
+    "maxBoostBar": 0.4,
+    "driveRatio": 7.0,
+    "lobes": 2
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4
+    ],
+    "tailpipeLength": 0.5,
+    "mufflerVolume": 0.004
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 0.6875,
+    "blades": 3,
+    "diameter": 3.5
+  },
+  "family": "reciprocating"
+}

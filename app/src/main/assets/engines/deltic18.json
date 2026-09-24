@@ -1,0 +1,63 @@
+{
+  "id": "deltic18",
+  "name": "ネイピア デルティック 18気筒 88L",
+  "category": "対向ピストン (Opposed-Piston)",
+  "description": "3本のクランクを三角形に配置 (1本は逆回転)。2ストローク対向ピストン・ディーゼル。",
+  "cycle": "diesel2",
+  "bore": 0.13017499999999999,
+  "stroke": 0.18414999999999998,
+  "rodLength": 0.42,
+  "compressionRatio": 16,
+  "idleRpm": 600,
+  "redlineRpm": 1600,
+  "inertia": 12.0,
+  "reciprocatingMass": 6.0,
+  "sparkAdvance": 5,
+  "burnDuration": 45,
+  "layout": {
+    "type": "deltic",
+    "perBank": 6,
+    "exhaustLead": 20
+  },
+  "induction": {
+    "type": "roots",
+    "maxBoostBar": 0.6,
+    "driveRatio": 5.0,
+    "lobes": 3
+  },
+  "valvetrain": {
+    "exhaustPortATDC": 110,
+    "transferPortATDC": 125
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ],
+    "tailpipeLength": 1.5,
+    "mufflerVolume": 0.1
+  },
+  "drivetrain": {
+    "gears": [
+      1.0
+    ],
+    "finalDrive": 1.0
+  },
+  "family": "reciprocating"
+}

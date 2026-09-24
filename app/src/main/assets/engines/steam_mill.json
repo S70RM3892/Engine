@@ -1,0 +1,36 @@
+{
+  "id": "steam_mill",
+  "name": "単気筒複動 蒸気機関 (工場用)",
+  "category": "外燃機関 (External Combustion)",
+  "description": "クロスヘッド+偏心輪駆動スライドバルブ。締切比35%の膨張行程。",
+  "family": "reciprocating",
+  "bore": 0.25,
+  "stroke": 0.5,
+  "rodLength": 1.25,
+  "compressionRatio": 10,
+  "idleRpm": 30,
+  "redlineRpm": 120,
+  "limiterRpm": 150,
+  "inertia": 900.0,
+  "reciprocatingMass": 120,
+  "boilerPressure": 900000.0,
+  "cutoff": 0.35,
+  "layout": {
+    "type": "steam",
+    "count": 1,
+    "doubleActing": true
+  },
+  "exhaust": {
+    "runnerLengths": [
+      3.0
+    ],
+    "tailpipeLength": 6.0,
+    "mufflerVolume": 0.4
+  },
+  "drivetrain": {
+    "gears": [
+      3.0
+    ],
+    "finalDrive": 1.0
+  }
+}

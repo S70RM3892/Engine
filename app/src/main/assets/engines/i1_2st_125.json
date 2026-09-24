@@ -1,0 +1,48 @@
+{
+  "id": "i1_2st_125",
+  "name": "単気筒 125cc 2ストローク",
+  "category": "直列 (Inline)",
+  "description": "ピストンポート式2スト。毎回転点火。排気/掃気ポートのタイミングで圧力波形が変わる。",
+  "cycle": "otto2",
+  "bore": 0.054,
+  "stroke": 0.0545,
+  "rodLength": 0.11,
+  "compressionRatio": 12.0,
+  "idleRpm": 1800,
+  "redlineRpm": 11500,
+  "inertia": 0.008,
+  "reciprocatingMass": 0.16,
+  "sparkAdvance": 18,
+  "burnDuration": 45,
+  "layout": {
+    "type": "inline",
+    "count": 1,
+    "throwAngles": [
+      0
+    ]
+  },
+  "valvetrain": {
+    "exhaustPortATDC": 85,
+    "transferPortATDC": 118
+  },
+  "exhaust": {
+    "runnerLengths": [
+      1.05
+    ],
+    "collectorLength": 0.2,
+    "tailpipeLength": 0.3,
+    "mufflerVolume": 0.003
+  },
+  "drivetrain": {
+    "gears": [
+      2.9,
+      2.0,
+      1.6,
+      1.3,
+      1.1,
+      0.95
+    ],
+    "finalDrive": 3.8
+  },
+  "family": "reciprocating"
+}

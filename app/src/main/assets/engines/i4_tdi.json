@@ -1,0 +1,49 @@
+{
+  "id": "i4_tdi",
+  "name": "直列4気筒 2.0L ディーゼルターボ",
+  "category": "直列 (Inline)",
+  "description": "圧縮着火 (CR16.5)。スロットル弁の代わりに燃料噴射量で出力を制御。",
+  "cycle": "diesel4",
+  "bore": 0.081,
+  "stroke": 0.0955,
+  "rodLength": 0.144,
+  "compressionRatio": 16.5,
+  "idleRpm": 800,
+  "redlineRpm": 4500,
+  "inertia": 0.2,
+  "sparkAdvance": 6,
+  "burnDuration": 50,
+  "layout": {
+    "type": "inline",
+    "count": 4,
+    "throwAngles": [
+      0,
+      180,
+      180,
+      0
+    ]
+  },
+  "firingOrder": [
+    1,
+    3,
+    4,
+    2
+  ],
+  "induction": {
+    "type": "turbo",
+    "maxBoostBar": 1.5,
+    "maxRpm": 210000,
+    "spoolTime": 1.0
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.3,
+      0.3,
+      0.3,
+      0.3
+    ],
+    "tailpipeLength": 2.2,
+    "mufflerVolume": 0.03
+  },
+  "family": "reciprocating"
+}

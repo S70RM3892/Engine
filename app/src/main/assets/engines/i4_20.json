@@ -1,0 +1,40 @@
+{
+  "id": "i4_20",
+  "name": "直列4気筒 2.0L NA",
+  "category": "直列 (Inline)",
+  "description": "180°フラットクランク、点火順序 1-3-4-2。最も一般的な構成。",
+  "bore": 0.086,
+  "stroke": 0.086,
+  "rodLength": 0.143,
+  "compressionRatio": 11.0,
+  "idleRpm": 750,
+  "redlineRpm": 7000,
+  "inertia": 0.14,
+  "layout": {
+    "type": "inline",
+    "count": 4,
+    "throwAngles": [
+      0,
+      180,
+      180,
+      0
+    ]
+  },
+  "firingOrder": [
+    1,
+    3,
+    4,
+    2
+  ],
+  "exhaust": {
+    "runnerLengths": [
+      0.55,
+      0.55,
+      0.55,
+      0.55
+    ],
+    "collectorLength": 0.5,
+    "tailpipeLength": 1.6
+  },
+  "family": "reciprocating"
+}

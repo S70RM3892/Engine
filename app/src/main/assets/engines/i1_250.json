@@ -1,0 +1,48 @@
+{
+  "id": "i1_250",
+  "name": "単気筒 250cc DOHC",
+  "category": "直列 (Inline)",
+  "description": "オフロード車系 単気筒4スト。1気筒の不等速回転と大きなトルク変動を観察できる。",
+  "bore": 0.077,
+  "stroke": 0.0536,
+  "rodLength": 0.105,
+  "compressionRatio": 12.5,
+  "idleRpm": 1600,
+  "redlineRpm": 11500,
+  "inertia": 0.012,
+  "reciprocatingMass": 0.25,
+  "layout": {
+    "type": "inline",
+    "count": 1,
+    "throwAngles": [
+      0
+    ]
+  },
+  "valvetrain": {
+    "intakeValves": 2,
+    "exhaustValves": 2,
+    "ivoBTDC": 20,
+    "ivcABDC": 55,
+    "evoBBDC": 55,
+    "evcATDC": 20
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.9
+    ],
+    "collectorLength": 0.3,
+    "tailpipeLength": 0.5,
+    "mufflerVolume": 0.004
+  },
+  "drivetrain": {
+    "gears": [
+      2.7,
+      1.9,
+      1.5,
+      1.2,
+      1.0
+    ],
+    "finalDrive": 3.3
+  },
+  "family": "reciprocating"
+}

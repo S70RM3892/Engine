@@ -1,0 +1,23 @@
+{
+  "id": "turbofan",
+  "name": "高バイパス ターボファン (CFM56 級)",
+  "category": "航空タービン (Gas Turbine)",
+  "description": "2軸式。ファン(N1) 24枚ブレードの BPF トーンと高圧コア(N2)。",
+  "family": "turbine",
+  "idleRpm": 9100,
+  "redlineRpm": 15183,
+  "inertia": 1.0,
+  "turbine": {
+    "kind": "turbofan",
+    "fanBlades": 24,
+    "compressorStages": 9,
+    "turbineStages": 5,
+    "compressorBlades": 36,
+    "n1MaxRpm": 5380,
+    "n2MaxRpm": 15183,
+    "maxThrustN": 120000,
+    "spoolTime": 3.0,
+    "length": 2.5,
+    "radius": 0.9
+  }
+}

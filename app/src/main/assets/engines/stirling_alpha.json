@@ -1,0 +1,34 @@
+{
+  "id": "stirling_alpha",
+  "name": "α型スターリングエンジン",
+  "category": "外燃機関 (External Combustion)",
+  "description": "高温/低温ピストン 90°位相。シュミット理論による等温サイクル。",
+  "family": "reciprocating",
+  "bore": 0.06,
+  "stroke": 0.04,
+  "rodLength": 0.1,
+  "compressionRatio": 3,
+  "idleRpm": 500,
+  "redlineRpm": 1500,
+  "inertia": 0.08,
+  "reciprocatingMass": 0.3,
+  "hotTemp": 900,
+  "coldTemp": 330,
+  "meanPressure": 2000000.0,
+  "layout": {
+    "type": "stirling",
+    "vAngle": 90
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.1
+    ],
+    "tailpipeLength": 0.1
+  },
+  "drivetrain": {
+    "gears": [
+      2.0
+    ],
+    "finalDrive": 1.0
+  }
+}

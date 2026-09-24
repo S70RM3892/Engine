@@ -1,0 +1,22 @@
+{
+  "id": "turbojet",
+  "name": "ターボジェット (J85 級)",
+  "category": "航空タービン (Gas Turbine)",
+  "description": "単軸 8段軸流圧縮機・2段タービン。",
+  "family": "turbine",
+  "idleRpm": 8900,
+  "redlineRpm": 16500,
+  "inertia": 1.0,
+  "turbine": {
+    "kind": "turbojet",
+    "compressorStages": 8,
+    "turbineStages": 2,
+    "compressorBlades": 28,
+    "n1MaxRpm": 16500,
+    "n2MaxRpm": 16500,
+    "maxThrustN": 13000,
+    "spoolTime": 2.0,
+    "length": 1.1,
+    "radius": 0.25
+  }
+}

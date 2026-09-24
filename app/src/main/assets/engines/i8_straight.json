@@ -1,0 +1,53 @@
+{
+  "id": "i8_straight",
+  "name": "直列8気筒 4.0L",
+  "category": "直列 (Inline)",
+  "description": "戦前高級車/レーサーの直8。2-4-2 クランク、点火順序 1-6-2-5-8-3-7-4。",
+  "bore": 0.08,
+  "stroke": 0.1,
+  "rodLength": 0.19,
+  "compressionRatio": 8.0,
+  "idleRpm": 600,
+  "redlineRpm": 5500,
+  "inertia": 0.35,
+  "valvetrain": {
+    "type": "OHV"
+  },
+  "layout": {
+    "type": "inline",
+    "count": 8,
+    "throwAngles": [
+      0,
+      180,
+      270,
+      90,
+      90,
+      270,
+      180,
+      0
+    ]
+  },
+  "firingOrder": [
+    1,
+    6,
+    2,
+    5,
+    8,
+    3,
+    7,
+    4
+  ],
+  "exhaust": {
+    "runnerLengths": [
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7
+    ]
+  },
+  "family": "reciprocating"
+}

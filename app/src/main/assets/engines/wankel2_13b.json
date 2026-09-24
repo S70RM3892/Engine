@@ -1,0 +1,31 @@
+{
+  "id": "wankel2_13b",
+  "name": "ヴァンケル 2ローター 1.3L (13B 級)",
+  "category": "ロータリー (Wankel)",
+  "description": "e=15mm R=105mm b=80mm → 654cc×2。ローター位相 180°。",
+  "family": "wankel",
+  "compressionRatio": 10.0,
+  "idleRpm": 800,
+  "redlineRpm": 9000,
+  "inertia": 0.09,
+  "sparkAdvance": 12,
+  "burnDuration": 90,
+  "wankel": {
+    "rotors": 2,
+    "rotorPhases": [
+      0,
+      180
+    ],
+    "eccentricity": 0.015,
+    "generatingRadius": 0.105,
+    "width": 0.08
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.45,
+      0.45
+    ],
+    "tailpipeLength": 2.0,
+    "mufflerVolume": 0.02
+  }
+}

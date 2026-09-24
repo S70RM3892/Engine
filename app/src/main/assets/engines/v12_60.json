@@ -1,0 +1,44 @@
+{
+  "id": "v12_60",
+  "name": "V型12気筒 60° 6.0L",
+  "category": "V型 (V-Engine)",
+  "description": "直6×2 の完全バランス。60°毎の等間隔点火。",
+  "bore": 0.089,
+  "stroke": 0.08,
+  "rodLength": 0.14,
+  "compressionRatio": 11.2,
+  "idleRpm": 800,
+  "redlineRpm": 8500,
+  "inertia": 0.25,
+  "layout": {
+    "type": "v",
+    "count": 12,
+    "bankAngle": 60,
+    "throwAngles": [
+      0,
+      120,
+      240,
+      240,
+      120,
+      0
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55,
+      0.55
+    ],
+    "tailpipeLength": 1.5
+  },
+  "family": "reciprocating"
+}

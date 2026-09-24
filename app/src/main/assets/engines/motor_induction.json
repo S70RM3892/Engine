@@ -1,0 +1,28 @@
+{
+  "id": "motor_induction",
+  "name": "三相誘導モータ 190kW",
+  "category": "電動機 (Electric Motor)",
+  "description": "2極対・すべり制御。回転子スロット高調波と PWM キャリア音。",
+  "family": "electric",
+  "idleRpm": 0,
+  "redlineRpm": 18000,
+  "inertia": 0.1,
+  "motor": {
+    "kind": "induction",
+    "polePairs": 2,
+    "statorSlots": 60,
+    "pwmHz": 8000,
+    "ratedTorque": 330,
+    "ratedPowerW": 193000,
+    "maxRpm": 18000,
+    "slipRated": 0.025,
+    "radius": 0.12,
+    "length": 0.18
+  },
+  "drivetrain": {
+    "gears": [
+      9.7
+    ],
+    "finalDrive": 1.0
+  }
+}

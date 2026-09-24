@@ -1,0 +1,29 @@
+{
+  "id": "wankel1",
+  "name": "ヴァンケル 1ローター 500cc",
+  "category": "ロータリー (Wankel)",
+  "description": "偏心軸:ローター = 3:1。1ローターは偏心軸1回転毎に点火。",
+  "family": "wankel",
+  "compressionRatio": 8.6,
+  "idleRpm": 1100,
+  "redlineRpm": 6500,
+  "inertia": 0.05,
+  "sparkAdvance": 12,
+  "burnDuration": 90,
+  "wankel": {
+    "rotors": 1,
+    "rotorPhases": [
+      0
+    ],
+    "eccentricity": 0.014,
+    "generatingRadius": 0.1,
+    "width": 0.067
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.4
+    ],
+    "tailpipeLength": 1.0,
+    "mufflerVolume": 0.01
+  }
+}

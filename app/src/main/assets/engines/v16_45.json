@@ -1,0 +1,52 @@
+{
+  "id": "v16_45",
+  "name": "V型16気筒 45° 7.4L",
+  "category": "V型 (V-Engine)",
+  "description": "戦前高級車の V16。直8クランクを 2 バンクで共有し 45°毎に点火。",
+  "bore": 0.076,
+  "stroke": 0.102,
+  "rodLength": 0.18,
+  "compressionRatio": 5.5,
+  "idleRpm": 500,
+  "redlineRpm": 4000,
+  "inertia": 0.45,
+  "valvetrain": {
+    "type": "OHV"
+  },
+  "layout": {
+    "type": "v",
+    "count": 16,
+    "bankAngle": 45,
+    "throwAngles": [
+      0,
+      180,
+      270,
+      90,
+      90,
+      270,
+      180,
+      0
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ]
+  },
+  "family": "reciprocating"
+}

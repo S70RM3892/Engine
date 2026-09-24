@@ -1,0 +1,35 @@
+{
+  "id": "v6_60",
+  "name": "V型6気筒 60° 3.5L",
+  "category": "V型 (V-Engine)",
+  "description": "60°V6 は 60°スプリットピンで 120°等間隔点火を実現。",
+  "bore": 0.094,
+  "stroke": 0.083,
+  "rodLength": 0.15,
+  "compressionRatio": 10.8,
+  "idleRpm": 700,
+  "redlineRpm": 7000,
+  "inertia": 0.17,
+  "layout": {
+    "type": "v",
+    "count": 6,
+    "bankAngle": 60,
+    "throwAngles": [
+      0,
+      120,
+      240
+    ],
+    "splitPin": 60
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ]
+  },
+  "family": "reciprocating"
+}

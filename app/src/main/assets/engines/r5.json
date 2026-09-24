@@ -1,0 +1,41 @@
+{
+  "id": "r5",
+  "name": "単列星型5気筒 (キナー K-5 級)",
+  "category": "星型 (Radial)",
+  "description": "点火順序 1-3-5-2-4 (1回転おき)。",
+  "bore": 0.108,
+  "stroke": 0.133,
+  "rodLength": 0.265,
+  "compressionRatio": 5.3,
+  "idleRpm": 500,
+  "redlineRpm": 1925,
+  "inertia": 0.9,
+  "valvetrain": {
+    "type": "OHV",
+    "intakeValves": 1,
+    "exhaustValves": 1
+  },
+  "layout": {
+    "type": "radial",
+    "perRow": 5,
+    "rows": 1
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.35,
+      0.35,
+      0.35,
+      0.35,
+      0.35
+    ],
+    "tailpipeLength": 0.3,
+    "mufflerVolume": 0.003
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 1.0,
+    "blades": 2,
+    "diameter": 2.3
+  },
+  "family": "reciprocating"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "i5_25",
+  "name": "直列5気筒 2.5L",
+  "category": "直列 (Inline)",
+  "description": "144°等間隔点火 1-2-4-5-3。独特の奇数気筒サウンド。",
+  "bore": 0.0825,
+  "stroke": 0.0928,
+  "rodLength": 0.144,
+  "compressionRatio": 10.0,
+  "idleRpm": 750,
+  "redlineRpm": 7000,
+  "inertia": 0.16,
+  "layout": {
+    "type": "inline",
+    "count": 5,
+    "throwAngles": [
+      0,
+      216,
+      144,
+      72,
+      288
+    ]
+  },
+  "firingOrder": [
+    1,
+    2,
+    4,
+    5,
+    3
+  ],
+  "exhaust": {
+    "runnerLengths": [
+      0.5,
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ]
+  },
+  "family": "reciprocating"
+}

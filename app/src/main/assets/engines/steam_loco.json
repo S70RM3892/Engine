@@ -1,0 +1,41 @@
+{
+  "id": "steam_loco",
+  "name": "2気筒複動 蒸気機関車",
+  "category": "外燃機関 (External Combustion)",
+  "description": "左右 90°位相 (クォータリング)。1回転4回のドラフト音。",
+  "family": "reciprocating",
+  "bore": 0.48,
+  "stroke": 0.66,
+  "rodLength": 2.4,
+  "compressionRatio": 10,
+  "idleRpm": 25,
+  "redlineRpm": 300,
+  "limiterRpm": 320,
+  "inertia": 3000.0,
+  "reciprocatingMass": 300,
+  "boilerPressure": 1500000.0,
+  "cutoff": 0.3,
+  "layout": {
+    "type": "steam",
+    "count": 2,
+    "doubleActing": true,
+    "throwAngles": [
+      0,
+      90
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      1.2,
+      1.2
+    ],
+    "tailpipeLength": 2.5,
+    "mufflerVolume": 0.5
+  },
+  "drivetrain": {
+    "gears": [
+      1.0
+    ],
+    "finalDrive": 1.0
+  }
+}

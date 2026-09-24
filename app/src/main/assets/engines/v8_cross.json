@@ -1,0 +1,41 @@
+{
+  "id": "v8_cross",
+  "name": "V型8気筒 90° クロスプレーン 5.0L",
+  "category": "V型 (V-Engine)",
+  "description": "90°間隔クランクピン (クロスプレーン)。バンク内が不等間隔排気となりドロドロ音に。",
+  "bore": 0.093,
+  "stroke": 0.0927,
+  "rodLength": 0.1504,
+  "compressionRatio": 11.0,
+  "idleRpm": 650,
+  "redlineRpm": 7000,
+  "inertia": 0.25,
+  "reciprocatingMass": 0.6,
+  "layout": {
+    "type": "v",
+    "count": 8,
+    "bankAngle": 90,
+    "throwAngles": [
+      0,
+      90,
+      270,
+      180
+    ]
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7,
+      0.7
+    ],
+    "collectorLength": 0.6,
+    "tailpipeLength": 2.0,
+    "mufflerVolume": 0.03
+  },
+  "family": "reciprocating"
+}

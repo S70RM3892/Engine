@@ -1,0 +1,59 @@
+{
+  "id": "jumo205",
+  "name": "ユンカース Jumo 205 6気筒 16.6L",
+  "category": "対向ピストン (Opposed-Piston)",
+  "description": "上下2本のクランクで12本のピストンを駆動する航空ディーゼル。",
+  "cycle": "diesel2",
+  "bore": 0.105,
+  "stroke": 0.16,
+  "rodLength": 0.33,
+  "compressionRatio": 17,
+  "idleRpm": 700,
+  "redlineRpm": 2800,
+  "inertia": 2.0,
+  "reciprocatingMass": 2.0,
+  "sparkAdvance": 6,
+  "burnDuration": 45,
+  "layout": {
+    "type": "opposed",
+    "count": 6,
+    "throwAngles": [
+      0,
+      240,
+      120,
+      180,
+      60,
+      300
+    ],
+    "exhaustLead": 12
+  },
+  "induction": {
+    "type": "roots",
+    "maxBoostBar": 0.5,
+    "driveRatio": 4.0,
+    "lobes": 3
+  },
+  "valvetrain": {
+    "exhaustPortATDC": 105,
+    "transferPortATDC": 122
+  },
+  "exhaust": {
+    "runnerLengths": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4
+    ],
+    "tailpipeLength": 0.5,
+    "mufflerVolume": 0.004
+  },
+  "drivetrain": {
+    "type": "propeller",
+    "reduction": 0.6,
+    "blades": 3,
+    "diameter": 3.3
+  },
+  "family": "reciprocating"
+}
