@@ -43,6 +43,10 @@ struct EngineApp {
     std::string specName;
     ANativeWindow* window = nullptr;  // Vulkan サーフェス
     float effects = 0;
+    // 描画資源 (renderer/sim) の排他。シミュレータとゲームの 2 画面が切り替わる瞬間に、
+    // 新しい画面の描画スレッドと古い画面の破棄処理が重なっても壊れないようにする。
+    std::mutex renderMutex;
+    int vkGen = 0;  // 現在の Vulkan サーフェスの世代 (古い画面からの破棄/描画を無視する)
 };
 
 EngineApp* g_app = nullptr;
@@ -200,19 +204,29 @@ JNIEXPORT jboolean JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSupported
 }
 
 // Vulkan: 描画スレッドから呼ぶ
-JNIEXPORT jboolean JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSurfaceCreated(JNIEnv* env, jobject, jobject surface) {
+// 戻り値: サーフェス世代 (>0)。失敗時 0。
+JNIEXPORT jint JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSurfaceCreated(JNIEnv* env, jobject, jobject surface) {
     EngineApp& a = app();
+    std::lock_guard<std::mutex> rg(a.renderMutex);
     a.renderer.releaseVulkan();
     if (a.window) ANativeWindow_release(a.window);
     a.window = ANativeWindow_fromSurface(env, surface);
-    if (!a.window) return JNI_FALSE;
+    ++a.vkGen;
+    if (!a.window) return 0;
     bool ok = a.renderer.initVulkan(a.window);
-    if (!ok) LOGE("Vulkan init failed");
-    return ok ? JNI_TRUE : JNI_FALSE;
+    if (!ok) {
+        LOGE("Vulkan init failed");
+        ANativeWindow_release(a.window);
+        a.window = nullptr;
+        return 0;
+    }
+    return a.vkGen;
 }
 
-JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSurfaceDestroyed(JNIEnv*, jobject) {
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_vkSurfaceDestroyed(JNIEnv*, jobject, jint gen) {
     EngineApp& a = app();
+    std::lock_guard<std::mutex> rg(a.renderMutex);
+    if (gen != a.vkGen) return;  // すでに別の画面がサーフェスを持っている
     a.renderer.releaseVulkan();
     if (a.window) ANativeWindow_release(a.window);
     a.window = nullptr;
@@ -236,16 +250,23 @@ JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setAutoOrbit(JN
 
 JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_surfaceCreated(JNIEnv*, jobject) {
     EngineApp& a = app();
+    std::lock_guard<std::mutex> rg(a.renderMutex);
     a.renderer.releaseGL();  // 旧コンテキストの名前は無効
     if (!a.renderer.initGL()) LOGE("GLES renderer init failed");
 }
 
-JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_surfaceChanged(JNIEnv*, jobject, jint w, jint h) {
-    app().renderer.resize(w, h);
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_surfaceChanged(JNIEnv*, jobject, jint w, jint h, jint gen) {
+    EngineApp& a = app();
+    std::lock_guard<std::mutex> rg(a.renderMutex);
+    if (gen != 0 && gen != a.vkGen) return;
+    a.renderer.resize(w, h);
 }
 
-JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_drawFrame(JNIEnv*, jobject, jfloat dt) {
+// gen: 0 = GLES, >0 = Vulkan サーフェス世代 (古い世代の描画スレッドは何もしない)
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_drawFrame(JNIEnv*, jobject, jfloat dt, jint gen) {
     EngineApp& a = app();
+    std::lock_guard<std::mutex> rg(a.renderMutex);
+    if (gen != 0 && gen != a.vkGen) return;
     Controls controls;
     ViewInput view;
     int pvChamber;

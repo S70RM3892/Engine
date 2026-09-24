@@ -43,14 +43,14 @@ class EngineGLView(context: Context) : GLSurfaceView(context) {
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-            NativeBridge.surfaceChanged(width, height)
+            NativeBridge.surfaceChanged(width, height, 0)
         }
 
         override fun onDrawFrame(gl: GL10?) {
             val now = System.nanoTime()
             val dt = ((now - last) / 1e9f).coerceIn(0.001f, 0.05f)
             last = now
-            NativeBridge.drawFrame(dt)
+            NativeBridge.drawFrame(dt, 0)
         }
     }
 

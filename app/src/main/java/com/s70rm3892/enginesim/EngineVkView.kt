@@ -69,7 +69,8 @@ class EngineVkView(context: Context, private val onVulkanFailed: () -> Unit) : S
     fun onPause() { synchronized(lock) { paused = true } }
 
     private fun renderLoop(h: SurfaceHolder) {
-        if (!NativeBridge.vkSurfaceCreated(h.surface)) {
+        val gen = NativeBridge.vkSurfaceCreated(h.surface)
+        if (gen == 0) {
             post { onVulkanFailed() }
             return
         }
@@ -80,17 +81,17 @@ class EngineVkView(context: Context, private val onVulkanFailed: () -> Unit) : S
                     while (running && paused) lock.wait()
                     if (!running) return
                     if (sizeChanged) {
-                        NativeBridge.surfaceChanged(width, height)
+                        NativeBridge.surfaceChanged(width, height, gen)
                         sizeChanged = false
                     }
                 }
                 val now = System.nanoTime()
                 val dt = ((now - last) / 1e9f).coerceIn(0.001f, 0.05f)
                 last = now
-                NativeBridge.drawFrame(dt)
+                NativeBridge.drawFrame(dt, gen)
             }
         } finally {
-            NativeBridge.vkSurfaceDestroyed()
+            NativeBridge.vkSurfaceDestroyed(gen)
         }
     }
 }

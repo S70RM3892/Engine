@@ -17,8 +17,9 @@ jobs:
       - name: Build & run
         run: |
           cmake -S tests -B tests/build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-          cmake --build tests/build --target host_tests
+          cmake --build tests/build --target host_tests game_balance
           ./tests/build/host_tests
+          ./tests/build/game_balance
 
   apk:
     name: Android APK

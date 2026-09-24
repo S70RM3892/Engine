@@ -147,8 +147,12 @@ class ConsoleUIController(
             accent = Pal.CYAN
             onRelease = { CustomEngineDialog(activity, catalog, backend) { loadEngine(it) }.show() }
         }
+        val gameKey = KeyButton(activity, "GAME ▶").apply {
+            accent = Pal.VIOLET
+            onRelease = { onOpenGame?.invoke() }
+        }
         statusText = label(10f, Pal.GREEN, mono = true).apply { gravity = Gravity.CENTER }
-        addView(row(engineButton, designKey, statusText, weights = floatArrayOf(3f, 1.6f, 1f)))
+        addView(row(engineButton, designKey, gameKey, statusText, weights = floatArrayOf(3f, 1.6f, 1.2f, 1f)))
         specText = label(8.5f, Pal.TEXT, mono = true).apply {
             setPadding(0, activity.dp(2f).toInt(), 0, activity.dp(2f).toInt())
             maxLines = 4
@@ -364,6 +368,7 @@ class ConsoleUIController(
             return
         }
         currentEntry = entry
+        EngineOwner.token = this
         summary = s
         telemetry.summary = s
         engineButton.text = s.name
@@ -477,7 +482,12 @@ class ConsoleUIController(
         statusText.setTextColor(runState.color)
     }
 
+    /** ゲーム画面を開く (MainActivity が設定) */
+    var onOpenGame: (() -> Unit)? = null
+
     fun start() {
+        // ゲーム画面がエンジンを差し替えていたら、選択中の機種を読み込み直す
+        if (EngineOwner.token !== this) currentEntry?.let { loadEngine(it) }
         running = true
         handler.removeCallbacks(tick)
         handler.post(tick)

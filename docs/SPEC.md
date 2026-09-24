@@ -1,4 +1,4 @@
-# 3D エンジン・フルシミュレーター 仕様書 v2 (Android APK)
+# 3D エンジン・フルシミュレーター 仕様書 v3 (Android APK)
 
 > 本書は初版仕様書を実装可能な粒度まで具体化・修正した改訂版である。
 > 各項の「実装」欄はリポジトリ内の該当ソースを示す。数式・定数は実装と一致させている。
@@ -21,6 +21,16 @@
 | 10 | 横画面固定 | Android 16 以降、sw600dp 以上の大画面では向き固定・リサイズ不可指定が無視される [出典](https://developer.android.com/about/versions/16/behavior-changes-16) | 縦長ウィンドウでは「上段=ビューポート|テレメトリ / 下段=コンソール」に自動再配置 (§2.1) |
 | 11 | オーディオスレッドの排他制御 | 「排他実行」はロック前提と読め、音切れの原因になる | オーディオスレッドは **ロック・メモリ確保を一切行わない**。共有値は atomic、構成差し替えは atomic ポインタ交換 (§7) |
 | 12 | 圧縮機/ファンの翼通過音 | ファン以外は可聴域 (20kHz) を超える (例: 28 枚 × 16500rpm ≈ 7.7kHz、ターボ 11 枚 × 190krpm ≈ 35kHz) | 可聴域を超える成分は **オクターブ折返し** で音程変化だけを残す (聴感上の表現であることを明記) |
+
+### 0.1 v3 の追加 (第 2 次要望)
+
+| # | 要望 | 実装 |
+|---|---|---|
+| 13 | 気筒数を自分で決めたい | **n 気筒設計ダイアログ**: 直列 1〜16 / V 2〜24 / 水平対向 2〜16 / 星型 3〜11 気筒×1〜4 列 / 対向ピストン 1〜12 / ヴァンケル 1〜4 ローター。ボア・ストローク・ロッド比・圧縮比・回転域・サイクル (4 スト/2 スト/ディーゼル)・過給を指定。クランクピンは **等間隔点火** になるよう自動設計 (§3.7)。端末内に保存しカタログに追加 |
+| 14 | アクセル踏み込みボタン | **ペダルボタン**: 押した位置 (下ほど深い) が目標開度。実ペダル同様に踏み込み 3/s・戻し 5/s の速度制限。踏んでいる間はガバナ連動を一時解除 |
+| 15 | オートマモード | **駆動モード 台上 / MT / AT**。車両モードでは縦方向の車両運動 (質量・転がり・空気抵抗・勾配・ブレーキ) を解き、AT は **トルクコンバータ + ロックアップ + シフトスケジュール (キックダウン付き)**、MT はオートクラッチ (§3.8) |
+| 16 | Vulkan 化 | 描画を **API 非依存フロントエンド + Vulkan バックエンド** に分割。Vulkan 非対応/初期化失敗端末は GLES 3.0 に自動フォールバック (§4.1) |
+| 17 | エンジン特性を活かしたインクリメンタルゲーム (別アプリ扱い・演出増し) | **ENGINE EMPIRE**: ランチャーに別アイコンで登録。シミュレータの物理をそのまま「発電所」として使い、実出力・熱効率・回転域がゲーム性になる。炎/火花/煙/閃光/シェイク等の演出を追加 (§10) |
 
 ---
 
@@ -71,7 +81,12 @@
 
 | パネル | 操作子 | 範囲/挙動 |
 |---|---|---|
-| ENGINE | エンジン選択 (カタログダイアログ) | 43 機種。選択で諸元 (気筒/排気量/ボア×ストローク/圧縮比/点火順序) を表示 |
+| ENGINE | エンジン選択 (カタログダイアログ) | 43 機種 + ユーザー設計機。選択で諸元 (気筒/排気量/ボア×ストローク/圧縮比/点火順序) を表示 |
+| | **n気筒 設計** | §3.7 の生成器で任意気筒数のエンジンを作成・保存 |
+| | **GAME ▶** | ENGINE EMPIRE (§10) を開く |
+| DRIVE | 駆動モード 台上 / MT / AT | 台上: ダイナモ負荷。MT/AT: 車両モード (負荷スライダは勾配 −10〜+15% に切替) |
+| | **アクセルペダル** / ブレーキ | ペダル優先 (踏むとスロットル直接操作) |
+| | 車速・実ギア・スリップ・ロックアップ表示 | AT のギア選択は N / D |
 | | IGN (トグル) / START (押している間) / AUTO START | 点火・燃料カット、スタータトルク、エンスト時の自動クランキング |
 | RPM | 目標回転スライダ (Idle〜Redline, レッドゾーン表示, 実回転を緑線で重畳) | 無段階 |
 | | ステップキー −1000/−100/+100/+1000 | |
@@ -168,13 +183,37 @@
 | 直4 2.0L アイドル | 750rpm | MAP 24kPa, スロットル 6.4% | MAP 25〜35kPa |
 | 全 43 機種 | 読込/幾何拘束/アイドル安定/負荷運転/音響出力 | **ALL PASSED** | |
 
+### 3.7 n 気筒生成器 (`core/CustomEngine.{h,cpp}`)
+
+- 4 ストの点火間隔は 720°/n、2 ストは 360°/n。
+- 直列: 対称な鏡像配置 (n=8 は 2-4-2)。点火順序は全探索で最も等間隔になる順序を選ぶ (≤18 気筒)。
+- V 型: バンク角 α と等間隔点火のため、スプリットピン角 = α − 720°/n (2 ストは 360°/n)。V8 はクロスプレーンを選択可。
+- 水平対向: 対向する 2 気筒でピンを 180° ずらす (ボクサー)。
+- 星型: 列ごとに奇数気筒の 1 つ飛ばし点火。列間の位相は探索で決める。
+- レッドラインは平均ピストン速度 25 m/s で上限を掛け、慣性モーメントは気筒数が少ないほど大きくする (フライホイール相当)。
+- 検証: `host_tests` で 81 構成を生成し、点火間隔の等間隔性と自立運転を確認。
+
+### 3.8 車両モード / AT (`sim/EngineSimulation.cpp`)
+
+- 車両: `m dv/dt = F_drive − (C_rr m g cosθ + ½ρC_dA v² + m g sinθ) − F_brake`。
+- トルクコンバータ: 速度比 `sr = ω_turbine / ω_impeller` の関数として、ポンプ吸収トルクは ω² に比例 (容量係数 K)、トルク比は `1 + 0.9(1 − sr)` (ストール時 1.9)。容量係数と K ファクタの関係は [USPTO 9827975](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9827975) 等の記述 (T_imp ∝ N²/K²、T_turbine = T_imp·TR) に従う。
+- ロックアップ: 3 速以上・スロットル一定で締結。
+- シフトスケジュール: アップ `idle + (0.93·red − idle)(0.28 + 0.7·thr)`、ダウン `1.25·idle + (0.55·red − 1.25·idle)·thr²` (踏み込むとキックダウン)。
+- MT はオートクラッチで、容量はエンジン回転に応じて立ち上がる (発進時のエンストを防ぐ)。
+
 ---
 
 ## 4. グラフィックス・パイプライン
 
 ### 4.1 技術選定
 
-**C++20 (NDK r29) + OpenGL ES 3.0**。理由: ①断面キャップに必要なステンシル操作とクリップ平面を直接制御、②外部マテリアルコンパイラ不要、③同じレンダラを PC の Mesa (EGL サーフェスレス) で動かしスクリーンショットで回帰確認できる。Filament/Vulkan は将来のバックエンド候補 (シーン記述は GL 非依存に分離済み)。
+**C++20 (NDK r29) + Vulkan 1.0** (既定) / **OpenGL ES 3.0** (フォールバック)。
+
+- `render/RenderFrontend` が API 非依存の `FrameData` (ノード行列・マテリアル・熱色・断面グループ・パーティクル) を作り、`render/vk/VkBackend` と `render/GLBackend` が同じデータを描く。
+- Vulkan: `SurfaceView` + 専用描画スレッド、FIFO (垂直同期)、sRGB スワップチェーン、4xMSAA、D24S8。断面キャップのステンシル書込みマスク/比較マスクは動的ステート。シェーダは GLSL 4.50 を NDK の `glslc` で SPIR-V にしてバイナリへ埋め込む。
+- **プリローテーション**: スワップチェーンの `preTransform` を `currentTransform` に合わせ、回転は投影行列側で行う (コンポジタの回転パスを避けて電力を抑える。[Android 公式ガイド](https://developer.android.com/games/optimize/vulkan-prerotation))。
+- クリップ空間の差 (Vulkan は Y 下向き・深度 0..1) は投影行列の補正で吸収し、GLES と同一の画を出す (ホストの lavapipe + 検証レイヤで両者を比較)。
+- 起動時に `vkSupported()` で確認し、非対応またはサーフェス初期化失敗時は `EngineGLView` へ切替。シミュレータとゲームの 2 画面が入れ替わる瞬間に備え、Vulkan サーフェスには **世代番号** を付け、古い画面の破棄/描画要求は無視する。
 
 ### 4.2 シーン
 
@@ -314,7 +353,7 @@ PBR Metallic-Roughness (GGX / Smith / Schlick)。鋳鉄・鋳造アルミ・切�
 ### 7.1 スレッドとデータフロー
 
 ```
-UI スレッド (Kotlin)            GL スレッド (GLSurfaceView)                 オーディオスレッド (Oboe)
+UI スレッド (Kotlin)            描画スレッド (Vulkan/GL)                    オーディオスレッド (Oboe)
  ConsoleUIController ──mutex──►  NativeBridge.drawFrame(dt)                    onAudioReady()
   setControls/setView             ├ 保留中のエンジン定義を適用                  └ EngineAcousticsDSP.render()
   getTelemetry (30Hz) ◄──mutex──  ├ EngineSimulation.step(dt)  ──atomic──►       (AudioFeed を lock-free で読む)
@@ -346,7 +385,7 @@ UI スレッド (Kotlin)            GL スレッド (GLSurfaceView)             
 | compileSdk / targetSdk / minSdk | 36 / 36 / 26 |
 | NDK | r29 (29.0.14206865), CMake 3.31.6, C++20, libc++_shared |
 | オーディオ | Oboe 1.11.0 (prefab) |
-| グラフィックス | OpenGL ES 3.0 |
+| グラフィックス | Vulkan 1.0 (既定) / OpenGL ES 3.0 (フォールバック) |
 | テスト | ホスト C++ (clang) / EGL+Mesa ヘッドレス描画 / Robolectric 4.17 (ネイティブグラフィックス) |
 
 ビルド: `./gradlew assembleDebug` (または `assembleRelease`)。16KB ページ端末向けに `-Wl,-z,max-page-size=16384` を指定。
@@ -359,15 +398,56 @@ CI: `.github/workflows/android.yml` がホストテスト・Robolectric・APK �
 - 実機 (Android 端末) での動作確認はまだ行っていない。ネイティブ部はホスト上のテストとヘッドレス描画、UI は Robolectric で検証済み。
 - 熱力学は単一ゾーン・準定常の簡略モデル。吸排気管内の圧力波 (慣性過給・脈動効果) は音響側でのみ表現し、充填効率には反映していない。
 - 可視化の燃焼ガスは燃焼室を満たす円柱で、火炎伝播の空間分布は表現しない。
-- 今後: 管内 1 次元気体力学 (MOC/有限体積) による充填効率、Vulkan/Filament バックエンド、FDN による空間残響、ユーザー JSON の外部ストレージ読込、テレメトリの CSV 出力。
+- Vulkan バックエンドは Mesa lavapipe (ソフトウェア実装) と検証レイヤで確認済みだが、実 GPU ドライバでの確認はまだ。
+- 車両モデルは縦方向 1 自由度 (タイヤ滑りは摩擦円の上限のみ)。
+- ゲームの経済バランスは `tests/game_balance.cpp` の定常運転値から調整した暫定値。
+- 今後: 管内 1 次元気体力学 (MOC/有限体積) による充填効率、FDN による空間残響、ユーザー JSON の外部ストレージ読込、テレメトリの CSV 出力。
 
 ---
 
-## 10. 参考文献
+## 10. ENGINE EMPIRE (インクリメンタルゲーム)
+
+別アイコンのランチャー項目 (`game/GameActivity`、別タスク)。3D ビューは全面表示で、ゲーム演出と自動周回カメラを有効にする。
+
+### 10.1 コアループ — 物理がそのまま経済になる
+
+| 量 | 定義 |
+|---|---|
+| 収入 [¥/s] | ダイナモが吸収した実出力 `T_load·ω` [kW] × コンボ × 倍率 (ジェットは `軸出力 + 推力 × 250 m/s`) |
+| 支出 [¥/s] | 燃料の投入熱量 [kW] × 0.12 (電動機は電力 × 0.35) |
+| 自動ダイナモ | `load = 0.9·x^1.6`, `x = (rpm − idle)/(0.9·red − idle)` → 全開で約 0.8×レッドラインで釣り合う |
+| スイートゾーン | ガソリン 0.72〜0.95 / ディーゼル 0.62〜0.92 / 電動機 0.30〜0.62 / タービン 0.88〜1.06 / プロペラ 0.78〜1.0 (レッドライン比) |
+| コンボ | ゾーン内で ×1→×3 に上昇、外れると減衰、**リミッター当てで消滅** |
+| 熱ゲージ | `+0.07·thr²(0.5 + rpm/red)·(過給・レブ補正) − 冷却` / 満タンで 4 秒点火カット (OVERHEAT) |
+| アフターファイア | アクセルオフで未燃焼ガスが燃えると 1.5 秒分の収入ボーナス (ロータリー・ターボ車が得意) |
+
+→ **熱効率の高いエンジンほど純収入が多く**、ディーゼルは低回転、モータは中回転、タービンは最高回転で稼ぐ。アイドリング中のタービンは赤字になる。
+
+### 10.2 進行
+
+- **エンジン 13 台** (解放順): 単気筒 → 並列 2 気筒 → 13B ロータリー → 水平対向 6 → PMSM → V8 クロスプレーン → 直 4 ターボ → V12 → 星型 9 → Jumo 205 → ターボシャフト → デルティック → ターボファン。1 台解放ごとに全収入 +25%。
+- **チューン**: ボア/ストローク/圧縮比/カム/軽量化/レブ/過給機/排気/ラジエーター/**気筒追加** (n 気筒生成器で V12 → V24 など)。タービンは燃焼器・スプール応答、モータは磁石。いずれも **エンジン定義 JSON を書き換えて物理モデルを作り直す** ので、音や挙動も変わる。
+- **研究**: 自動スロットル (放置収入、オフラインは平均収入 × 50%、最大 4 時間)、**オーバーホール** (プレステージ: `TP = ⌊√(今回の獲得/10⁶)⌋`、1 TP = 収入 +10%)。
+- **ゼロヨン**: 車両モード (MT は SHIFT ボタン、シフトランプが赤の瞬間で PERFECT、AT は報酬 ×0.7)。ベスト更新で報酬 2 倍。プロペラ機・ジェットは不可。
+
+### 10.3 演出 (`RenderFrontend::setEffects(1)`)
+
+排気ポートからの炎 (EVO ごと)、ディーゼルの黒煙・蒸気の白煙、アフターファイアの火球・火花・画面閃光・カメラシェイク、リミッター火花、タービンのジェット炎、モータのアーク、排気管の赤熱。HUD は所持金カウントアップ、浮遊テキスト、紙吹雪、熱ビネット、中央ポップアップ、タコメータのスイートゾーン帯。
+
+### 10.4 検証
+
+- `app/src/test/.../game/GameTest.kt` (Robolectric): 金額表記、ロスター順、費用成長、プレステージ、セーブ往復、オフライン上限、アップグレードの物理反映、HUD スクリーンショット。
+- `tests/game_balance.cpp`: 全エンジンを自動ダイナモで定常運転し、出力・燃料・純収入・回転域を表示 (全開で黒字であることを CI で確認)。全アップグレード最大の JSON も同じツールで読み込み安定性を確認。
+
+---
+
+## 11. 参考文献
 
 - ピストン運動の式: [Piston motion equations (Wikipedia/Grokipedia 系)](https://grokipedia.com/page/Piston_motion_equations), [Engineers Edge – Piston Slider Crank](https://www.engineersedge.com/mechanics_machines/piston_slider_crank_mechanism_14925.htm)
 - アーティキュレーテッドロッド: [Connecting rod – Wikipedia](https://en.wikipedia.org/wiki/Articulated_connecting_rod), [Inside the Radial Engine](http://www.aviation-history.com/engines/radial.htm)
 - ヴァンケル幾何: [Wankel Rotary Engine: Epitrochoidal Envelopes (Wolfram)](https://www.wolframcloud.com/obj/4e4653a7-6e22-45ac-8347-413bd35ae04d), [Wankel engine geometry (ResearchGate)](https://www.researchgate.net/figure/Wankel-engine-geometry-e-Eccentricity-R-Generating-radius-a-Equidistance-b-Width_fig3_336850845)
 - Wiebe 関数: [Ghojel, Review of the development and applications of the Wiebe function (2010)](https://journals.sagepub.com/doi/10.1243/14680874JER06510)
 - エンジン音合成: [Baldan et al., Physically informed car engine sound synthesis (2015)](https://air.iuav.it/retrieve/de164c2a-5461-60ee-e053-3a05fe0a7787/SIVE15_submission_4.pdf), [Physics-Informed Neural Engine Sound Modeling with Differentiable Pulse-Train Synthesis (2026)](https://awesomepapers.io/speech-audio/papers/2603.09391)
+- Vulkan: [Vulkan pre-rotation (Android Developers)](https://developer.android.com/games/optimize/vulkan-prerotation), [Khronos Vulkan-Samples: surface rotation](https://docs.vulkan.org/samples/latest/samples/performance/surface_rotation/README.html)
+- トルクコンバータ: [USPTO 9827975 — K factor / capacity factor / torque ratio](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9827975)
 - Android: [Oboe](https://developer.android.com/games/sdk/oboe), [Android 16 behavior changes](https://developer.android.com/about/versions/16/behavior-changes-16), [AGP release notes](https://developer.android.com/build/releases/about-agp), [NDK revision history](https://developer.android.com/ndk/downloads/revision_history)

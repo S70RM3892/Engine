@@ -20,5 +20,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- インクリメンタルゲーム (シミュレータとは別タスク・別アイコンで起動) -->
+        <activity
+            android:name=".game.GameActivity"
+            android:exported="true"
+            android:label="@string/game_name"
+            android:icon="@mipmap/ic_game"
+            android:roundIcon="@mipmap/ic_game"
+            android:taskAffinity="com.s70rm3892.enginesim.game"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

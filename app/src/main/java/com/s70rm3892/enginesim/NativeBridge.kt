@@ -27,6 +27,14 @@ interface ConsoleBackend {
     fun getPV(volumeL: FloatArray, pressureBar: FloatArray): Int
 }
 
+/**
+ * ネイティブのエンジン/描画はプロセスに 1 つだけなので、最後に読み込んだ画面 (シミュレータ or ゲーム) を記録する。
+ * 画面復帰時に自分が所有者でなければエンジンを読み込み直す。
+ */
+object EngineOwner {
+    @JvmStatic var token: Any? = null
+}
+
 /** ネイティブエンジン (C++20) への JNI 境界。 */
 object NativeBridge : ConsoleBackend {
     init {
@@ -56,8 +64,9 @@ object NativeBridge : ConsoleBackend {
 
     /** Vulkan が使える端末か (インスタンスとグラフィックスキューの有無) */
     external fun vkSupported(): Boolean
-    external fun vkSurfaceCreated(surface: android.view.Surface): Boolean
-    external fun vkSurfaceDestroyed()
+    /** 戻り値: サーフェス世代 (>0)、失敗時 0 */
+    external fun vkSurfaceCreated(surface: android.view.Surface): Int
+    external fun vkSurfaceDestroyed(gen: Int)
     external fun backendName(): String
     /** ゲーム演出の強さ (0 = シミュレータ) */
     external fun setEffects(level: Float)
@@ -65,8 +74,9 @@ object NativeBridge : ConsoleBackend {
     external fun setAutoOrbit(rate: Float)
 
     external fun surfaceCreated()
-    external fun surfaceChanged(width: Int, height: Int)
-    external fun drawFrame(dtSec: Float)
+    /** gen: 0 = GLES, >0 = Vulkan サーフェス世代 */
+    external fun surfaceChanged(width: Int, height: Int, gen: Int)
+    external fun drawFrame(dtSec: Float, gen: Int)
 
     external fun startAudio()
     external fun stopAudio()
