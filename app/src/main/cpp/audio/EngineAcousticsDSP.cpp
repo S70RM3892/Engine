@@ -11,11 +11,13 @@ namespace {
 constexpr float kGasC = 520.0f;  // 高温排気中の音速 [m/s]
 constexpr float kExhaustGain = 0.35f;
 
-// 可聴域 (sr*0.42 以下) に入るまでオクターブ単位で折り返す。
-// 実機のブレード通過音は超音波域に達するが、音程の上昇感を保つための聴感上の処理。
-inline float foldAudible(float hz, float sr) {
-    float lim = sr * 0.42f;
-    while (hz > lim) hz *= 0.5f;
+// 合成する純音 (翼通過音・ターボ/ルーツの唸り・PWM・ギア鳴き) の上限。
+// これを超える成分はオクターブ単位で折り返して音程の上昇感だけ残す。
+// 人の耳は 2〜5kHz が最も敏感で (ISO 226)、高域に偏った音ほど「鋭く」不快に感じられる (DIN 45692 のシャープネス)。
+// さらに 15〜17kHz 台の純音は若年層にだけ聞こえる「モスキート音」になるため、純音は 4kHz 以下に抑える。
+constexpr float kToneCeilHz = 4000.0f;
+inline float foldAudible(float hz, float /*sr*/) {
+    while (hz > kToneCeilHz) hz *= 0.5f;
     return hz;
 }
 inline float smoothCoef(float tau, float sr) { return 1.0f - std::exp(-1.0f / (tau * sr)); }
@@ -135,9 +137,10 @@ void EngineAcousticsDSP::resetState() {
     }
     for (int k = 0; k < 4; ++k) tailLp_[k].setCutoff(3200.0f - 500.0f * k, sr_);
     intakeBp_.bandpass(260, 1.8f, sr_);
-    intakeHiss_.bandpass(3200, 0.9f, sr_);
+    intakeHiss_.bandpass(2200, 0.9f, sr_);
     throttleWhistle_.bandpass(2300, 9.0f, sr_);
-    const float modeHz[5] = {2900, 4700, 7100, 1450, 820};
+    // 動弁打音/スラップの共振 (耳障りな 5kHz 超のモードは置かず、金属感は 1〜3kHz で出す)
+    const float modeHz[5] = {2400, 3300, 1750, 1150, 650};
     const float modeQ[5] = {12, 14, 10, 9, 6};
     for (int i = 0; i < 5; ++i) {
         mechModes_[i].bandpass(modeHz[i], modeQ[i], sr_);
@@ -146,8 +149,9 @@ void EngineAcousticsDSP::resetState() {
     }
     bovBp_.bandpass(2600, 0.8f, sr_);
     jetHp_.highpass(40, 0.7f, sr_);
-    motorWindage_.bandpass(1100, 1.0f, sr_);
+    motorWindage_.bandpass(700, 0.9f, sr_);
     rumbleLp_.setCutoff(180, sr_);
+    setupMaster();
     bovEnv_ = 0;
 }
 
@@ -324,7 +328,7 @@ float EngineAcousticsDSP::renderCombustion(const AcousticConfig& c, const AudioF
     // --- ギア鳴き / プロペラ ---
     int gear = feed.gear.load(std::memory_order_relaxed);
     if (gear > 0 && !c.propeller) {
-        float g = gearOsc_.sine(c.gearTeeth * rpm / 60.0f, sr_);
+        float g = gearOsc_.sine(foldAudible(c.gearTeeth * rpm / 60.0f, sr_), sr_);
         pan(g * (0.15f + torqueSm_) * rr * 0.012f, 180.0f, L, R);
     }
     if (c.propeller) {
@@ -357,7 +361,7 @@ void EngineAcousticsDSP::renderTurbine(const AcousticConfig& c, const AudioFeed&
     // ファン BPF とバズソー (動翼先端が超音速になる高 N1 域)
     if (c.fanBlades > 0) {
         float shaftHz = n1 * c.n1MaxRpm / 60.0f;
-        float fan = fanOsc_.sine(c.fanBlades * shaftHz, sr_) * n1 * n1 * 0.09f;
+        float fan = fanOsc_.sine(foldAudible(c.fanBlades * shaftHz, sr_), sr_) * n1 * n1 * 0.09f;
         float buzz = 0;
         if (n1 > 0.72f) {
             const float amp[6] = {0.5f, 0.8f, 0.35f, 0.6f, 0.25f, 0.45f};
@@ -368,7 +372,7 @@ void EngineAcousticsDSP::renderTurbine(const AcousticConfig& c, const AudioFeed&
     }
     if (c.turbineKind == TurbineKind::Turboshaft) {
         float outRpm = outRpmSm_;
-        float g = gearOsc_.sine(c.gearTeeth * outRpm * 12.0f / 60.0f, sr_);
+        float g = gearOsc_.sine(foldAudible(c.gearTeeth * outRpm * 12.0f / 60.0f, sr_), sr_);
         pan(g * n1 * 0.02f, 150.0f, L, R);
     }
     (void)feed;
@@ -380,23 +384,77 @@ void EngineAcousticsDSP::renderMotor(const AcousticConfig& c, const AudioFeed& f
     float tq = torqueSm_;
     float rr = rpm / std::max(1.0f, c.redlineRpm);
     bool on = feed.running.load(std::memory_order_relaxed);
+    // 電動機の純音は 2kHz 以下へ折り返す (唸りの音程変化は残しつつ、耳に刺さる帯域を避ける)
+    auto fold2k = [](float hz) { while (hz > 2000.0f) hz *= 0.5f; return hz; };
     float v = 0;
     if (on) {
-        // インバータ PWM: キャリア fc とその側帯波 fc ± 2fe, 2fc ± fe
+        // インバータ PWM: キャリア fc とその側帯波 fc ± 2fe, 2fc ± fe (存在感だけ残して控えめに)
         float fc = c.pwmHz;
-        float pwmAmp = 0.012f * (0.25f + tq);
-        v += pwmOsc_[0].sine(foldAudible(fc + 2 * fe, sr_), sr_) * pwmAmp;
-        v += pwmOsc_[1].sine(foldAudible(std::fabs(fc - 2 * fe), sr_), sr_) * pwmAmp;
-        v += pwmOsc_[2].sine(foldAudible(2 * fc + fe, sr_), sr_) * pwmAmp * 0.35f;
+        float pwmAmp = 0.003f * (0.25f + tq);
+        v += pwmOsc_[0].sine(fold2k(fc + 2 * fe), sr_) * pwmAmp;
+        v += pwmOsc_[1].sine(fold2k(std::fabs(fc - 2 * fe)), sr_) * pwmAmp;
+        v += pwmOsc_[2].sine(fold2k(2 * fc + fe), sr_) * pwmAmp * 0.35f;
         // 電磁加振: PMSM は 6 次トルクリプル, 誘導機はスロット高調波
         float order = c.motorKind == MotorKind::PMSM ? 6.0f * fe : c.statorSlots * rpm / 60.0f + 2 * fe;
-        v += emOsc_[0].sine(foldAudible(order, sr_), sr_) * tq * 0.03f;
-        v += emOsc_[1].sine(foldAudible(2 * fe, sr_), sr_) * tq * 0.02f;
+        v += emOsc_[0].sine(fold2k(order), sr_) * tq * 0.03f;
+        // 電気角周波数の 2 次 (磁気吸引力の基本成分) と基本波: EV らしい太い唸りの芯
+        v += emOsc_[1].sine(fold2k(2 * fe), sr_) * (0.3f + tq) * 0.035f;
+        v += emOsc_[2].sine(fold2k(fe), sr_) * (0.3f + tq) * 0.03f;
     }
+    // 軸回転 1 次 (わずかな残留アンバランス) — 低域の胴鳴り
+    v += emOsc_[3].sine(rpm / 60.0f, sr_) * rr * 0.03f;
     // 減速ギア鳴き + 風損
-    v += gearOsc_.sine(foldAudible(c.gearTeeth * rpm / 60.0f, sr_), sr_) * (0.1f + tq) * rr * 0.03f;
-    v += motorWindage_.process(noise_.white()) * rr * rr * 0.05f;
+    v += gearOsc_.sine(fold2k(c.gearTeeth * rpm / 60.0f), sr_) * (0.1f + tq) * rr * 0.018f;
+    v += motorWindage_.process(noise_.white()) * rr * rr * 0.04f;
     pan(v * 3.0f, 0.0f, L, R);  // 電動機は実機では静かだが、聴取用に持ち上げる
+}
+
+void EngineAcousticsDSP::setupMaster() {
+    for (auto& m : master_) {
+        m.sub.highpass(24.0f, 0.707f, sr_);          // 再生できない超低域はヘッドルームの無駄
+        m.shelf.lowShelf(140.0f, 6.0f, sr_);         // 低域 (燃焼の基本波と低次倍音) を +6dB
+        m.presence.peak(3500.0f, 0.9f, -4.0f, sr_);  // 耳が最も敏感な帯域を少し下げて刺さりを抑える
+        // 7kHz の 4 次 Butterworth + 10kHz の 2 次: 17.4kHz で約 −40dB (モスキート域を除去)
+        m.lp1.lowpass(7000.0f, 0.5412f, sr_);
+        m.lp2.lowpass(7000.0f, 1.3066f, sr_);
+        m.lp3.lowpass(10000.0f, 0.7071f, sr_);
+        // 仮想低音: 30〜120Hz を取り出して倍音を作り、小型スピーカーでも出る 100〜500Hz に載せる
+        // (欠落基本波効果: 倍音列から基本波の音程が知覚される。Larsen & Aarts, JAES 2002)
+        m.vbHp.highpass(30.0f, 0.707f, sr_);
+        m.vbLp.lowpass(120.0f, 0.707f, sr_);
+        m.vbOutHp.highpass(100.0f, 0.707f, sr_);
+        m.vbOutLp.lowpass(500.0f, 0.707f, sr_);
+        for (auto* b : {&m.sub, &m.shelf, &m.presence, &m.lp1, &m.lp2, &m.lp3, &m.vbLp, &m.vbHp, &m.vbOutHp, &m.vbOutLp}) b->reset();
+    }
+    compEnv_ = 0;
+}
+
+void EngineAcousticsDSP::processMaster(float& L, float& R, float bass) {
+    float* ch[2] = {&L, &R};
+    for (int i = 0; i < 2; ++i) {
+        Master& m = master_[i];
+        float x = m.sub.process(*ch[i]);
+        if (bass > 0.0f) {
+            float shelved = m.shelf.process(x);
+            x += (shelved - x) * bass;
+            float lo = m.vbLp.process(m.vbHp.process(x));
+            // 全波整流 (偶数次) + 飽和 (奇数次) で 2f, 3f, 4f… を生成
+            float h = 0.7f * std::fabs(lo) + 0.3f * std::tanh(3.0f * lo);
+            x += m.vbOutLp.process(m.vbOutHp.process(h)) * 1.2f * bass;
+        }
+        x = m.presence.process(x);
+        x = m.lp3.process(m.lp2.process(m.lp1.process(x)));
+        *ch[i] = x;
+    }
+    // ステレオ連動のコンプレッサ (アタック 5ms / リリース 150ms, 3:1): 低音を持ち上げても歪ませず迫力を出す
+    float peak = std::max(std::fabs(L), std::fabs(R));
+    float a = peak > compEnv_ ? 1.0f - std::exp(-1.0f / (0.005f * sr_)) : 1.0f - std::exp(-1.0f / (0.15f * sr_));
+    compEnv_ += (peak - compEnv_) * a;
+    const float th = 0.35f;
+    float g = compEnv_ > th ? std::pow(th / compEnv_, 1.0f - 1.0f / 3.0f) : 1.0f;
+    g *= 1.25f;  // メイクアップ
+    L *= g;
+    R *= g;
 }
 
 void EngineAcousticsDSP::render(float* out, int frames, const AudioFeed& feed) {
@@ -426,6 +484,7 @@ void EngineAcousticsDSP::render(float* out, int frames, const AudioFeed& feed) {
     const float tOut = feed.outputRpm.load(std::memory_order_relaxed);
     const float tEhz = feed.electricalHz.load(std::memory_order_relaxed);
     const float gain = feed.masterGain.load(std::memory_order_relaxed);
+    const float bass = feed.bassBoost.load(std::memory_order_relaxed);
     camYaw_ = feed.cameraYaw.load(std::memory_order_relaxed);
     const bool running = feed.running.load(std::memory_order_relaxed);
     slapGain_ = running ? 1.0f : 0.3f;
@@ -451,8 +510,11 @@ void EngineAcousticsDSP::render(float* out, int frames, const AudioFeed& feed) {
             case Family::Turbine: renderTurbine(c, feed, L, R); break;
             case Family::Electric: renderMotor(c, feed, L, R); break;
         }
-        L = dsp::softClip(dc_[0].process(L) * gain);
-        R = dsp::softClip(dc_[1].process(R) * gain);
+        L = dc_[0].process(L);
+        R = dc_[1].process(R);
+        processMaster(L, R, bass);
+        L = dsp::softClip(L * gain);
+        R = dsp::softClip(R * gain);
         out[2 * i] = std::isfinite(L) ? L : 0.0f;
         out[2 * i + 1] = std::isfinite(R) ? R : 0.0f;
     }

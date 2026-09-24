@@ -259,14 +259,14 @@ PBR Metallic-Roughness (GGX / Smith / Schlick)。鋳鉄・鋳造アルミ・切�
    │        → バンク集合管 (V 型・水平対向は左右別) → 4 本の部分反射導波管 (マフラー/テールパイプ)
    │        → マフラー低域通過 (容量で遮断周波数) → 排気音
    ├─► 吸気弁開 → 吸入パルス + 乱流ノイズ → エアボックス共鳴 (BPF) + スロットル笛 → 吸気音
-   ├─► 弁閉/上死点 → モーダル共振器 (2.9/4.7/7.1/1.45/0.82kHz) → タペット・プッシュロッド・ピストンスラップ
+   ├─► 弁閉/上死点 → モーダル共振器 (2.4/3.3/1.75/1.15/0.65kHz) → タペット・プッシュロッド・ピストンスラップ
    ├─► ターボ (翼通過音 + スプール風切り + ブローオフ) / ルーツ (ローブ通過音)
    ├─► 変速機ギア鳴き (歯数 × 回転数) / プロペラ翼通過周波数 (BPF) と高調波
    ├─► タービン: ジェット混合騒音 (推力とともに帯域上昇) + 圧縮機翼通過音 + ファン BPF + バズソー音
    └─► モータ: PWM キャリア fc と側帯波 fc±2fe, 2fc±fe + 6 次トルクリプル/スロット高調波 + 減速ギア
                                   │
                                   ▼
-             [3D パンニング (カメラ方位基準の等パワーパン)] → DC 除去 → ソフトリミッタ
+             [3D パンニング (カメラ方位基準の等パワーパン)] → DC 除去 → マスター聴感補正 (§5.3) → ソフトリミッタ
 ```
 
 排気系を部分反射導波管で表す構成は Baldan らの physically informed モデルに準拠 [出典](https://air.iuav.it/retrieve/de164c2a-5461-60ee-e053-3a05fe0a7787/SIVE15_submission_4.pdf)。エンジン音が「持続的な調和振動ではなく排気圧力パルスの列」であることは近年のパルス列モデルでも前提とされる [出典](https://awesomepapers.io/speech-audio/papers/2603.09391)。
@@ -275,6 +275,20 @@ PBR Metallic-Roughness (GGX / Smith / Schlick)。鋳鉄・鋳造アルミ・切�
 
 - パルスの強さは熱力学モデルが排気弁開時に公開する値 (lock-free atomic) を使う。よってスロットル・過給・失火・点火時期・燃料カットがそのまま音に出る。
 - パルス継続時間は約 90°CA (低回転ほど長く低い音)。音源の周波数軸は点火周波数 (直4 5600rpm → 187Hz を FFT で確認)。
+
+### 5.3 聴感補正 — 不快な高域を消し、低音に重きを置く (v0.5)
+
+| 処理 | 内容 | 根拠 |
+|---|---|---|
+| 純音の上限 | 翼通過音・ターボ/ルーツの唸り・ギア鳴き・ファン BPF は 4kHz、電動機の PWM/電磁音・ギア鳴きは 2kHz を超えたらオクターブ単位で折り返す (音程の上昇感は残る) | 耳は外耳道共鳴により 2〜5kHz が最も敏感 ([ISO 226 / 等ラウドネス曲線](https://en.wikipedia.org/wiki/Equal-loudness_contour))。高域に偏った音ほど鋭く不快に感じられる (DIN 45692 のシャープネス, [HEAD acoustics](https://cdn.head-acoustics.com/fileadmin/data/global/Application-Notes/SVP/Psychoacoustic-Analyses-I_e.pdf)) |
+| モスキート域の除去 | マスターに 7kHz の 4 次 Butterworth + 10kHz の 2 次ローパス → 17.4kHz で約 −40dB | 若年層にだけ聞こえて不快な 17.4kHz 帯 ([The Mosquito](https://en.wikipedia.org/wiki/The_Mosquito), [Scientific American](https://www.scientificamerican.com/article/bring-science-home-high-frequency-hearing/)) |
+| 刺さりの抑制 | 3.5kHz を −4dB (Q 0.9)。機械音の共振を 5kHz 以下へ、吸気ヒスを 2.2kHz へ | 同上 (最も敏感な帯域) |
+| 低域シェルフ | 140Hz 以下を +6dB (燃焼の基本波と低次倍音)。24Hz 以下はカット | — |
+| 仮想低音 | 30〜120Hz を抽出 → 全波整流 + 飽和で 2f, 3f, 4f… を生成 → 100〜500Hz に加算。スマホのスピーカーでも低い点火周波数の「太さ」が伝わる | 欠落基本波効果 ([Larsen & Aarts, JAES 2002 ほか](https://www.researchgate.net/publication/3180484_Virtual_bass_for_home_entertainment_multimedia_PC_game_station_and_portable_audio_systems)) |
+| バスコンプレッサ | ステレオ連動、アタック 5ms / リリース 150ms / 3:1 / しきい値 0.35 | 低音を持ち上げても歪ませずに迫力を出す |
+
+- 低域シェルフと仮想低音はシミュレータの「低音強調」で OFF にできる (物理モデルの音をそのまま聴く用)。モスキート域のカットと純音の上限は常に有効。
+- 検証 (`tests/audio_check.cpp`, 各機種をアイドル → 0.85×レッドラインで鳴らして Welch 平均スペクトル): 12kHz 以上の最大成分 (全体最大比) は変更前が最悪 **0dB** (ターボシャフトの圧縮機翼通過音が 20kHz 付近に折り返されていた)、PMSM −24dB、直 4 ターボ −37dB → 変更後は全 43 機種で **−74dB 以下**。250Hz 以下のエネルギー比は例えば V8 クロスプレーン 26% → 51%、Jumo 205 78% → 94%、PMSM のスペクトル重心は 5.1kHz → 0.6kHz。CI で全機種 −60dB 以下を確認する。
 
 実装: `audio/EngineAcousticsDSP.cpp`, `audio/AudioEngine.cpp`
 

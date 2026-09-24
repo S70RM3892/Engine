@@ -19,6 +19,10 @@ target_compile_options(escore PRIVATE -Wall -Wextra -Wno-unused-parameter -fno-e
 add_executable(host_tests host_tests.cpp)
 target_link_libraries(host_tests escore)
 target_compile_definitions(host_tests PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../app/src/main/assets/engines")
+add_executable(audio_check audio_check.cpp)
+target_link_libraries(audio_check escore)
+target_compile_definitions(audio_check PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../app/src/main/assets/engines")
+
 add_executable(game_balance game_balance.cpp)
 target_link_libraries(game_balance escore)
 target_compile_definitions(game_balance PRIVATE ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../app/src/main/assets/engines")

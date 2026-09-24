@@ -61,6 +61,19 @@ struct Biquad {
         float a0 = 1 + al / A;
         b0 = (1 + al * A) / a0; b1 = -2 * c / a0; b2 = (1 - al * A) / a0; a1 = -2 * c / a0; a2 = (1 - al / A) / a0;
     }
+    // RBJ ローシェルフ (S = 1)
+    void lowShelf(float hz, float gainDb, float sr) {
+        float A = std::pow(10.0f, gainDb / 40.0f);
+        float w = 2 * kPi * std::fmin(hz, 0.45f * sr) / sr, c = std::cos(w);
+        float al = std::sin(w) / 2 * std::sqrt(2.0f);
+        float sA = 2 * std::sqrt(A) * al;
+        float a0 = (A + 1) + (A - 1) * c + sA;
+        b0 = A * ((A + 1) - (A - 1) * c + sA) / a0;
+        b1 = 2 * A * ((A - 1) - (A + 1) * c) / a0;
+        b2 = A * ((A + 1) - (A - 1) * c - sA) / a0;
+        a1 = -2 * ((A - 1) + (A + 1) * c) / a0;
+        a2 = ((A + 1) + (A - 1) * c - sA) / a0;
+    }
     float process(float x) {
         float y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
         x2 = x1; x1 = x; y2 = y1; y1 = y;

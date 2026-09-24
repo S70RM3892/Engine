@@ -293,6 +293,12 @@ class ConsoleUIController(
             onChange = { volume = it; backend.setVolume(it) }
         }
         addView(row(sparkKnob, cutKnob, volKnob))
+        // 低音強調 (既定 ON)。OFF にすると物理モデルの音をそのまま聴ける (高域カットは常に有効)
+        addView(KeyButton(activity, "低音強調 (迫力サウンド)", toggle = true).apply {
+            accent = Pal.GREEN
+            on = true
+            onToggle = { backend.setBassBoost(it) }
+        })
         gearSel = SegmentedSelector(activity, listOf("N")).apply {
             label = "GEAR (トランスミッション)"
             onSelect = { gear = it; pushControls() }

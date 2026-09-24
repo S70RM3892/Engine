@@ -18,9 +18,11 @@ jobs:
       - name: Build & run
         run: |
           cmake -S tests -B tests/build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-          cmake --build tests/build --target host_tests game_balance
+          cmake --build tests/build --target host_tests game_balance audio_check
           ./tests/build/host_tests
           ./tests/build/game_balance
+          # 全機種で 12kHz 以上 (モスキート域) の最大成分が全体最大より 60dB 以上小さいこと
+          AUDIO_STRICT=1 ./tests/build/audio_check $(ls app/src/main/assets/engines | grep -v index | sed 's/\.json$//')
 
   apk:
     name: Android APK

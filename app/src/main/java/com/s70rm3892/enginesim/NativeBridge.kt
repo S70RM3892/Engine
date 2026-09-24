@@ -21,6 +21,9 @@ interface ConsoleBackend {
 
     fun setVolume(gain: Float)
 
+    /** 低音強調 (低域シェルフ + 仮想低音) の ON/OFF。モスキート域のカットは常に有効 */
+    fun setBassBoost(on: Boolean) {}
+
     /** [Tel] の並びで値を詰める。戻り値は書き込んだ要素数。 */
     fun getTelemetry(out: FloatArray): Int
 
@@ -57,6 +60,8 @@ object NativeBridge : ConsoleBackend {
     )
 
     external override fun setVolume(gain: Float)
+
+    external override fun setBassBoost(on: Boolean)
 
     external override fun getTelemetry(out: FloatArray): Int
 

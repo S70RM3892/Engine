@@ -165,6 +165,10 @@ JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setVolume(JNIEn
     app().feed.masterGain.store(v);
 }
 
+JNIEXPORT void JNICALL Java_com_s70rm3892_enginesim_NativeBridge_setBassBoost(JNIEnv*, jobject, jboolean on) {
+    app().feed.bassBoost.store(on ? 1.0f : 0.0f);
+}
+
 // テレメトリを配列に詰める (並びは Kotlin 側 Telemetry と一致させる)
 JNIEXPORT jint JNICALL Java_com_s70rm3892_enginesim_NativeBridge_getTelemetry(JNIEnv* env, jobject, jfloatArray out) {
     EngineApp& a = app();

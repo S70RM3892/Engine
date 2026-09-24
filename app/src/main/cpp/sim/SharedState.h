@@ -72,6 +72,7 @@ struct AudioFeed {
     std::atomic<bool> running{false};
     std::atomic<float> cameraYaw{0};
     std::atomic<float> masterGain{0.8f};
+    std::atomic<float> bassBoost{1.0f};  // 低音強調 (0 = 物理音そのまま, 1 = 既定)
     std::atomic<float> pulseAmp[kMaxChambers];
     std::atomic<float> intakeAmp[kMaxChambers];
     AudioFeed() {

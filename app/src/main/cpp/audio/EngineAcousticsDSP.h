@@ -107,6 +107,14 @@ private:
     dsp::Osc turboOsc_, rootsOsc_, rootsOsc2_, gearOsc_, propOsc_[4], compOsc_, compOsc2_, fanOsc_, buzzOsc_[6];
     dsp::Osc pwmOsc_[4], emOsc_[4];
     dsp::DCBlocker dc_[2];
+    // マスター (聴感補正): 超低域カット → 低域シェルフ → 仮想低音 → 2〜5kHz を控えめに → 急峻なローパス → コンプレッサ
+    struct Master {
+        dsp::Biquad sub, shelf, presence, lp1, lp2, lp3;
+        dsp::Biquad vbLp, vbHp, vbOutHp, vbOutLp;
+    } master_[2];
+    float compEnv_ = 0;
+    void setupMaster();
+    void processMaster(float& L, float& R, float bass);
     dsp::Noise noise_;
     float mechExc_[5] = {};
     float slapGain_ = 0;
