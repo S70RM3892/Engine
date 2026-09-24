@@ -173,6 +173,17 @@ class RunSession(
         object Overheat : Ev()
         object Blown : Ev()
         object SweetIn : Ev()
+        /** 帯に居続けた段階 (1 = NICE 3 秒, 2 = GREAT 6 秒, 3 = PERFECT 10 秒) */
+        data class Groove(val level: Int) : Ev()
+        object NitroReady : Ev()
+        object NitroStart : Ev()
+        object NitroEnd : Ev()
+        object GoldenSpawn : Ev()
+        data class GoldenGot(val text: String, val color: Int) : Ev()
+        object Knock : Ev()
+        object Fever : Ev()
+        /** 今日の稼ぎが節目 (¥1K, ¥10K, …) を越えた */
+        data class Milestone(val amount: Double) : Ev()
     }
 
     private val rnd = Random(seed)
@@ -208,6 +219,55 @@ class RunSession(
     var maxEff = 0.0
         private set
     val orders = ArrayList<Order>()
+
+    // ターゲット帯 (レッドライン比)。針を帯に入れているとコンボが溜まる。帯は滑らかに動き、ときどき跳ねる
+    var bandCenter = 0.0
+        private set
+    var bandWidth = 0.1
+        private set
+    private var bandFrom = 0.0
+    private var bandTo = 0.0
+    private var bandT = 0.0         // 移動の進み (0..1)
+    private var bandMove = 1.0      // 移動にかける秒数
+    private var bandHold = 0.0      // 次の移動までの静止時間
+    private val bandLo: Double
+    private val bandHi: Double
+    var inBand = false
+        private set
+    var grooveTime = 0.0            // 帯に居続けている秒数
+        private set
+    private var grooveLevel = 0
+
+    // ニトロ
+    var nitro = 0.0                 // ゲージ 0..1
+        private set
+    var nitroTime = 0.0             // 残り秒数
+        private set
+    private var nitroReadyShown = false
+
+    // フレンジー (金のボルトの当たり): 収入倍率
+    var frenzyTime = 0.0
+        private set
+
+    // 金のボルト
+    var goldenLife = 0.0            // 表示中の残り秒数 (0 = 出ていない)
+        private set
+    var goldenX = 0.5               // 画面上の位置 (0..1)
+        private set
+    var goldenY = 0.5
+        private set
+    private var goldenTimer = 0.0
+    var goldenCollected = 0
+        private set
+
+    // ノッキング (低回転で全開 = ラグ)
+    private var knockTimer = 0.0
+    private var knockWarn = 0.0
+    var knocking = false
+        private set
+
+    private var fever = false
+    private var nextMilestone = 1000.0
     private var lastAfterfire = -1
     private var wasLimiter = false
     private var wasSweet = false
@@ -226,17 +286,77 @@ class RunSession(
         sweetLo = (base.first + shift - perks.sweetWiden).coerceAtLeast(0.1)
         sweetHi = base.second + shift + perks.sweetWiden
         repeat(perks.orderSlots) { orders += OrderFactory.make(profile, perks, event, rnd, orders.map { it.kind }.toSet()) }
+        // 帯が動く範囲: スイートゾーンの少し下から上端まで。応答の遅い機関 (タービン/蒸気) は帯を広く
+        bandLo = (sweetLo - 0.22).coerceAtLeast(0.15)
+        bandHi = min(if (profile.isTurbine) 1.04 else 0.96, sweetHi)
+        bandCenter = (sweetLo + sweetHi) / 2
+        bandFrom = bandCenter
+        bandTo = bandCenter
+        bandHold = 3.0
+        goldenTimer = nextGoldenDelay()
+    }
+
+    private val slowEngine get() = profile.isTurbine || profile.cycle == "steam" || profile.cycle == "stirling"
+
+    private fun nextGoldenDelay() = (14.0 + rnd.nextDouble() * 12.0) / perks.goldenRate
+
+    /** 帯の目標位置を更新 (静止 → 滑らかに移動 → 静止、たまに高回転へのスパイク) */
+    private fun updateBand(dt: Double) {
+        if (bandT < 1.0) {
+            bandT = min(1.0, bandT + dt / bandMove)
+            val e = bandT * bandT * (3 - 2 * bandT)      // smoothstep
+            bandCenter = bandFrom + (bandTo - bandFrom) * e
+            return
+        }
+        bandHold -= dt
+        if (bandHold > 0) return
+        bandFrom = bandCenter
+        val spike = rnd.nextDouble() < 0.18
+        bandTo = if (spike) bandHi - 0.02 else bandLo + rnd.nextDouble() * (bandHi - bandLo)
+        bandMove = (if (slowEngine) 2.2 else 0.9) + rnd.nextDouble() * 0.8
+        bandHold = if (spike) 1.6 else 2.2 + rnd.nextDouble() * 2.5
+        bandT = 0.0
+    }
+
+    /** ニトロを使う (ゲージ満タン時) */
+    fun fireNitro(out: MutableList<Ev>): Boolean {
+        if (nitro < 1.0 || nitroTime > 0 || finished) return false
+        nitro = 0.0
+        nitroTime = perks.nitroSeconds
+        nitroReadyShown = false
+        out += Ev.NitroStart
+        return true
+    }
+
+    /** 金のボルトをタップした */
+    fun collectGolden(out: MutableList<Ev>): Boolean {
+        if (goldenLife <= 0 || finished) return false
+        goldenLife = 0.0
+        goldenCollected++
+        val roll = rnd.nextDouble()
+        when {
+            roll < 0.42 -> {
+                val v = max(30.0, incomeRate) * 12.0
+                earned += v
+                out += Ev.GoldenGot("ボーナス +¥${fmtMoney(v)}", COLOR_GOLD)
+            }
+            roll < 0.67 -> { frenzyTime = 7.0; out += Ev.GoldenGot("フレンジー! 収入 ×4", COLOR_GOLD) }
+            roll < 0.82 -> { heat = 0.0; hp = min(perks.maxHp, hp + 20.0); out += Ev.GoldenGot("クールダウン & 修理", COLOR_GREEN) }
+            roll < 0.95 -> { nitro = 1.0; out += Ev.GoldenGot("ニトロ満タン!", COLOR_CYAN) }
+            else -> { starsEarned += 1; out += Ev.GoldenGot("★ +1", COLOR_VIOLET) }
+        }
+        nitro = min(1.0, nitro + 0.15)
+        return true
     }
 
     val finished get() = blown || time >= duration
     val timeLeft get() = max(0.0, duration - time)
 
-    /** ペダルを離しているときのアシスタント (スイートゾーン中央を狙う P 制御) */
+    /** ペダルを離しているときのアシスタント (ターゲット帯の中央を狙う P 制御。Lv が低いと開度の上限が低い) */
     fun assistThrottle(rpm: Double): Double {
         val lv = perks.assistLevel
         if (lv <= 0) return 0.0
-        val target = profile.redline * (sweetLo + sweetHi) / 2
-        val err = (target - rpm) / profile.redline
+        val err = bandCenter - rpm / profile.redline
         return (0.35 + 4.0 * err).coerceIn(0.0, min(1.0, 0.18 * lv))
     }
 
@@ -263,21 +383,61 @@ class RunSession(
         maxPowerKw = max(maxPowerKw, outKw)
         if (outKw > 0.3 * maxPowerKw) maxEff = max(maxEff, s.efficiency)
 
-        // コンボ
-        val sweet = frac in sweetLo..sweetHi && outKw > 0.5
+        // ターゲット帯とコンボ
+        updateBand(dt)
+        val nitroOn = nitroTime > 0
+        val comboFrac = ((combo - 1) / max(0.1, perks.comboCap - 1)).coerceIn(0.0, 1.0)
+        bandWidth = (0.10 + perks.sweetWiden) * (if (slowEngine) 1.7 else 1.0) * (1.0 - 0.3 * comboFrac) * (if (nitroOn) 1.5 else 1.0)
+        inBand = kotlin.math.abs(frac - bandCenter) <= bandWidth / 2 && outKw > 0.3
         if (s.limiter && !wasLimiter) {
             if (combo > 1.3) out += Ev.Text("COMBO BREAK", COLOR_RED)
             combo = 1.0
         }
-        combo = if (sweet) min(perks.comboCap, combo + dt * 0.18 * perks.comboRate) else max(1.0, combo - dt * 0.6)
-        if (sweet && !wasSweet) out += Ev.SweetIn
-        if (sweet) sweetSeconds += dt
+        val gain = 0.22 * perks.comboRate * (if (nitroOn) 2.0 else 1.0)
+        combo = if (inBand) min(perks.comboCap, combo + dt * gain) else max(1.0, combo - dt * 0.5)
+        if (inBand && !wasSweet) out += Ev.SweetIn
+        if (inBand) {
+            sweetSeconds += dt
+            grooveTime += dt
+            nitro = min(1.0, nitro + dt * 0.045 * perks.nitroRate)
+            val lvl = when { grooveTime >= 10 -> 3; grooveTime >= 6 -> 2; grooveTime >= 3 -> 1; else -> 0 }
+            if (lvl > grooveLevel) { grooveLevel = lvl; out += Ev.Groove(lvl) }
+        } else {
+            grooveTime = 0.0
+            grooveLevel = 0
+        }
+        val atCap = combo >= perks.comboCap - 1e-6
+        if (atCap && !fever) out += Ev.Fever
+        fever = atCap
+        if (nitro >= 1.0 && !nitroReadyShown && nitroTime <= 0) { nitroReadyShown = true; out += Ev.NitroReady }
+        if (nitroOn) {
+            nitroTime -= dt
+            if (nitroTime <= 0) { nitroTime = 0.0; out += Ev.NitroEnd }
+        }
+        if (frenzyTime > 0) frenzyTime = max(0.0, frenzyTime - dt)
         wasLimiter = s.limiter
-        wasSweet = sweet
+        wasSweet = inBand
 
-        val income = (outKw * powerPrice * combo - fuelKw * fuelPrice) * multiplier
+        // 金のボルト
+        if (goldenLife > 0) {
+            goldenLife -= dt
+            if (goldenLife <= 0) { goldenLife = 0.0; goldenTimer = nextGoldenDelay() }
+        } else {
+            goldenTimer -= dt
+            if (goldenTimer <= 0) {
+                goldenLife = 5.0
+                goldenX = 0.25 + rnd.nextDouble() * 0.45
+                goldenY = 0.30 + rnd.nextDouble() * 0.35
+                goldenTimer = nextGoldenDelay()
+                out += Ev.GoldenSpawn
+            }
+        }
+
+        val boost = (if (nitroOn) 2.0 else 1.0) * (if (frenzyTime > 0) 4.0 else 1.0)
+        val income = (outKw * powerPrice * combo * boost - fuelKw * fuelPrice) * multiplier
         earned += income * dt
         incomeRate += (income - incomeRate) * min(1.0, dt / 1.2)
+        while (earned >= nextMilestone) { out += Ev.Milestone(nextMilestone); nextMilestone *= 10 }
 
         // アフターファイア
         if (lastAfterfire >= 0 && s.afterfireCount > lastAfterfire) {
@@ -299,6 +459,7 @@ class RunSession(
         var heatMul = perks.heatMul * (if (event == DayEvent.HEATWAVE) 1.4 else 1.0)
         if (profile.specialty == EngineSpecialty.HIGH_REV) heatMul *= 1.15
         if (profile.isElectric) heatMul *= 0.6 else if (profile.cycle.startsWith("diesel")) heatMul *= 0.8
+        if (nitroOn) heatMul *= 1.8
         val dmgMul = perks.damageMul * (if (event == DayEvent.INSPECTION) 2.0 else 1.0)
         if (overheat > 0) {
             overheat -= dt
@@ -316,6 +477,15 @@ class RunSession(
         }
         if (s.limiter) damage(6.0 * dt * dmgMul, out)
         if (heat > 0.9) damage(3.0 * dt * dmgMul, out)
+        // ノッキング: 低回転で全開 (ラグ) を続けるとカンカン鳴って耐久が減る
+        val knockProne = !profile.isElectric && !profile.isTurbine && profile.cycle != "steam" && profile.cycle != "stirling"
+        if (knockProne && throttle > 0.85 && frac < 0.4 && overheat <= 0) knockTimer += dt else knockTimer = max(0.0, knockTimer - 2 * dt)
+        knocking = knockTimer > 0.6
+        knockWarn = max(0.0, knockWarn - dt)
+        if (knocking) {
+            damage(5.0 * dt * dmgMul, out)
+            if (knockWarn <= 0) { knockWarn = 1.5; out += Ev.Knock }
+        }
 
         // 依頼
         updateOrders(dt, s, frac, outKw, out)
@@ -393,6 +563,7 @@ class RunSession(
 
     private fun complete(o: Order, out: MutableList<Ev>) {
         o.progress = 1.0
+        nitro = min(1.0, nitro + 0.25)
         ordersDone++
         orderEarned += o.reward
         earned += o.reward
@@ -417,6 +588,9 @@ class RunSession(
         const val COLOR_RED = 0xFFEB4034.toInt()
         const val COLOR_GREEN = 0xFF50D278.toInt()
         const val COLOR_ORANGE = 0xFFFF7828.toInt()
+        const val COLOR_GOLD = 0xFFFFC83C.toInt()
+        const val COLOR_CYAN = 0xFF40C8E6.toInt()
+        const val COLOR_VIOLET = 0xFFAA78FF.toInt()
 
         /** エンジン特性ごとのスイートゾーン (レッドライン比) */
         fun sweetZone(family: String, cycle: String, propeller: Boolean): Pair<Double, Double> = when {

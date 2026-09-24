@@ -34,6 +34,7 @@ class GameActivity : Activity() {
         }
         game = GameController(this, NativeBridge, source, GameController.prefsStore(this))
         game.onAutoOrbit = { NativeBridge.setAutoOrbit(it) }
+        game.onEffects = { NativeBridge.setEffects(it) }
         game.buildInto(root, viewportHost)
         setContentView(root)
         hideSystemBars()

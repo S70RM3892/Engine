@@ -101,7 +101,7 @@ object GameRoster {
     const val ROOT = "tiller"
 
     /** 価格の倍率 (目安: 1 つ手前のエンジンで数日働くと買える。最初の分岐は早めに選べるよう半分) */
-    fun priceScale(depth: Int) = if (depth <= 1) 2.0 else 4.0
+    fun priceScale(depth: Int) = if (depth <= 1) 2.0 else 5.0
 
     private fun node(id: String, name: String, lane: Int, depth: Int, price: Double, est: Double, vararg parents: String) =
         GameEngineDef(id, name, price * priceScale(depth), catalogId = id, lane = lane, depth = depth, parents = parents.toList(), estNet = est)
@@ -237,6 +237,7 @@ class GameState {
     val stats = GameStats()
     var raceUsedDay = 0                              // その夜のゼロヨンを走った日
     var nextEvent = DayEvent.NONE                    // 明日のイベント (夜のうちに予報される)
+    val tipsSeen = mutableSetOf<String>()            // 表示済みのヒント
 
     fun prog(key: String) = progress.getOrPut(key) { EngineProgress(key) }
     fun lv(node: String) = board[node] ?: 0
@@ -331,6 +332,7 @@ class GameState {
         put("stats", stats.toJson())
         put("race", raceUsedDay)
         put("event", nextEvent.name)
+        put("tips", org.json.JSONArray(tipsSeen.toList()))
     }.toString()
 
     companion object {
@@ -356,6 +358,7 @@ class GameState {
                 o.optJSONObject("stats")?.let { g.stats.read(it) }
                 g.raceUsedDay = o.optInt("race", 0)
                 g.nextEvent = runCatching { DayEvent.valueOf(o.optString("event", "NONE")) }.getOrDefault(DayEvent.NONE)
+                o.optJSONArray("tips")?.let { a -> for (i in 0 until a.length()) g.tipsSeen += a.getString(i) }
             }
             return g
         }

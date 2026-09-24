@@ -200,7 +200,8 @@ class GameTest {
         val ev = ArrayList<RunSession.Ev>()
         assertEquals(GameRules.SHIFT_BASE_S, r.duration, 1e-9)
         assertEquals(2, r.orders.size)
-        while (!r.finished) r.step(0.1, sample(0.85 * 7000, 40.0), 0.6, ev)
+        // 帯の中央を追いかける
+        while (!r.finished) r.step(0.1, sample(r.bandCenter * 7000, 40.0), 0.6, ev)
         assertTrue("earned ${r.earned}", r.earned > 40.0 * 0.5 * 50)
         assertTrue("combo builds in the sweet zone", r.combo > 2.0)
         assertTrue(r.sweetSeconds > 40)
@@ -211,6 +212,82 @@ class GameTest {
         assertEquals(1, g.stats.days)
         assertEquals(40.0, g.prog(GameRoster.ROOT).bestPowerKw, 1e-9)
         assertTrue(g.money > 0)
+    }
+
+    @Test
+    fun bandMovesAndCombosOnlyInside() {
+        val g = GameState()
+        val r = RunSession(profile(), g.perks, DayEvent.NONE, 1.0, seed = 11)
+        r.orders.clear()
+        val ev = ArrayList<RunSession.Ev>()
+        val centers = HashSet<Int>()
+        // 帯の外 (低回転) にいるとコンボは増えない
+        repeat(30) { r.step(0.1, sample(0.05 * 7000 + 800, 5.0), 0.3, ev) }
+        assertEquals(1.0, r.combo, 1e-9)
+        repeat(300) {
+            r.step(0.1, sample(r.bandCenter * 7000, 40.0), 0.6, ev)
+            centers += (r.bandCenter * 100).toInt()
+        }
+        assertTrue("band moves (${centers.size})", centers.size >= 5)
+        assertTrue(r.combo > 1.5)
+        assertTrue("groove events", ev.any { it is RunSession.Ev.Groove })
+    }
+
+    @Test
+    fun nitroDoublesIncomeAndHeat() {
+        val g = GameState()
+        fun run(nitro: Boolean): Triple<RunSession, Double, Double> {
+            val r = RunSession(profile(), g.perks, DayEvent.NONE, 1.0, seed = 12)
+            r.orders.clear()
+            val ev = ArrayList<RunSession.Ev>()
+            // ゲージを溜める
+            while (r.nitro < 1.0) r.step(0.1, sample(r.bandCenter * 7000, 40.0), 0.5, ev)
+            assertTrue(ev.any { it is RunSession.Ev.NitroReady })
+            if (nitro) assertTrue(r.fireNitro(ev))
+            val e0 = r.earned
+            val h0 = r.heat
+            repeat(40) { r.step(0.1, sample(r.bandCenter * 7000, 40.0), 0.9, ev) }
+            return Triple(r, r.earned - e0, r.heat - h0)
+        }
+        val (_, plainEarn, plainHeat) = run(false)
+        val (boosted, boostEarn, boostHeat) = run(true)
+        assertTrue("income ×2 ($boostEarn vs $plainEarn)", boostEarn > plainEarn * 1.6)
+        assertTrue("more heat", boostHeat > plainHeat)
+        assertFalse("can't fire twice", boosted.fireNitro(ArrayList()))
+    }
+
+    @Test
+    fun goldenBoltAppearsAndPays() {
+        val g = GameState()
+        val r = RunSession(profile(), g.perks, DayEvent.NONE, 1.0, seed = 13)
+        r.orders.clear()
+        val ev = ArrayList<RunSession.Ev>()
+        assertFalse("nothing to collect yet", r.collectGolden(ev))
+        var t = 0
+        while (r.goldenLife <= 0 && t < 400) { r.step(0.1, sample(r.bandCenter * 7000, 40.0), 0.5, ev); t++ }
+        assertTrue("spawned within 40 s", r.goldenLife > 0)
+        assertTrue(ev.any { it is RunSession.Ev.GoldenSpawn })
+        val before = r.earned + r.frenzyTime + r.nitro + r.starsEarned - r.heat
+        assertTrue(r.collectGolden(ev))
+        assertTrue(ev.any { it is RunSession.Ev.GoldenGot })
+        assertEquals(1, r.goldenCollected)
+        assertTrue("some reward", r.earned + r.frenzyTime + r.nitro + r.starsEarned - r.heat > before)
+    }
+
+    @Test
+    fun luggingKnocks() {
+        val g = GameState()
+        val r = RunSession(profile(), g.perks, DayEvent.NONE, 1.0, seed = 14)
+        r.orders.clear()
+        val ev = ArrayList<RunSession.Ev>()
+        repeat(20) { r.step(0.1, sample(0.3 * 7000, 20.0), 1.0, ev) }
+        assertTrue(r.knocking)
+        assertTrue(ev.any { it is RunSession.Ev.Knock })
+        assertTrue("damage", r.hp < g.perks.maxHp)
+        // 電動機はノックしない
+        val m = RunSession(profile().copy(family = "electric", cycle = "none"), g.perks, DayEvent.NONE, 1.0, seed = 14)
+        repeat(20) { m.step(0.1, sample(0.3 * 7000, 20.0), 1.0, ev) }
+        assertFalse(m.knocking)
     }
 
     @Test
@@ -260,7 +337,7 @@ class GameTest {
             val r = RunSession(profile(), g.perks, e, 1.0, seed = 5)
             r.orders.clear()
             val ev = ArrayList<RunSession.Ev>()
-            repeat(100) { r.step(0.1, sample(0.85 * 7000, 40.0), 0.5, ev) }
+            repeat(100) { r.step(0.1, sample(r.bandCenter * 7000, 40.0), 0.5, ev) }
             return r.earned
         }
         assertTrue(earn(DayEvent.PEAK_DEMAND) > earn(DayEvent.NONE) * 1.3)
@@ -403,7 +480,9 @@ class GameTest {
         game.startDay()
         assertEquals(GameController.Phase.DAY, game.phase)
         assertEquals(DayEvent.HEATWAVE, game.run!!.event)
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(4000))
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1200))
+        shot("game_countdown.png")
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(5000))
         assertTrue("auto dyno load engaged", backend.lastLoad > 0.5f)
         assertTrue("earning", game.run!!.earned > 0)
         shot("game_hud.png")

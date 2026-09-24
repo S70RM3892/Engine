@@ -54,7 +54,7 @@ class BalanceSimTest {
             OrderKind.EFFICIENCY -> 0.6
             OrderKind.COOL_POWER -> if (r.heat < 0.35) 0.75 else 0.0
             OrderKind.BLIP -> if (((t * 0.8).toInt() % 2) == 0) 0.0 else 1.0
-            else -> toward(red * (r.sweetLo + r.sweetHi) / 2)
+            else -> toward(red * r.bandCenter)
         }
     }
 
@@ -126,6 +126,8 @@ class BalanceSimTest {
             val out = ArrayList<RunSession.Ev>()
             var s = eng.step(0.05, 0.0, false)
             while (!r.finished) {
+                if (r.nitro >= 1.0) r.fireNitro(out)
+                if (r.goldenLife in 0.1..3.5 && rnd.nextDouble() < 0.05) r.collectGolden(out)   // 7 割くらい拾える
                 val thr = botThrottle(r, s.rpm, r.time)
                 val cut = r.overheat > 0
                 s = eng.step(0.05, if (cut) 0.0 else thr, cut)

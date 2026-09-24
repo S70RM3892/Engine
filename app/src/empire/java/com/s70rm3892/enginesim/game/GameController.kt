@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -88,6 +89,23 @@ class GameController(
     private var slow = false
     private var orbit = true
     var onAutoOrbit: ((Float) -> Unit)? = null
+    /** ネイティブ演出の強さ (ニトロ/フレンジー中は炎・火花・揺れを増やす) */
+    var onEffects: ((Float) -> Unit)? = null
+    private var effectsLevel = 1f
+
+    // シフトの演出
+    private lateinit var stage: FrameLayout
+    private lateinit var nitroBtn: NitroButton
+    private lateinit var golden: GoldenBoltView
+    private var countdownT = 0.0
+    private var coinAcc = 0.0
+    private var coinTimer = 0.0
+    private var lastEarned = 0.0
+    private var tipText = ""
+    private var tipTime = 0.0
+    private var tallyLines: List<String> = emptyList()
+    private var tallyShown = 0
+    private var tallyTimer = 0.0
 
     // UI
     private lateinit var hud: GameHudView
@@ -120,7 +138,7 @@ class GameController(
     fun buildInto(root: FrameLayout, viewportHost: FrameLayout) {
         val ctx = activity
         root.setBackgroundColor(Color.BLACK)
-        val stage = FrameLayout(ctx)
+        stage = FrameLayout(ctx)
         stage.addView(viewportHost, match())
         hud = GameHudView(ctx).apply { bottomInset = ctx.dp(8f) }
         stage.addView(hud, match())
@@ -129,14 +147,18 @@ class GameController(
         pedal = PedalButton(ctx).apply { label = "踏め!"; accent = Pal.RED }
         shiftKey = KeyButton(ctx, "SHIFT ▲").apply { accent = Pal.CYAN; onPress = { shiftUp() }; visibility = View.GONE }
         controls.addView(pedal, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(120f).toInt()))
+        nitroBtn = NitroButton(ctx).apply { onFire = { fireNitro() }; visibility = View.GONE }
+        controls.addView(nitroBtn, LinearLayout.LayoutParams(ctx.dp(92f).toInt(), ctx.dp(92f).toInt()).apply { marginStart = ctx.dp(10f).toInt() })
         controls.addView(shiftKey, LinearLayout.LayoutParams(ctx.dp(96f).toInt(), ctx.dp(96f).toInt()).apply { marginStart = ctx.dp(10f).toInt() })
         stage.addView(controls, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.BOTTOM or Gravity.START).apply { setMargins(ctx.dp(12f).toInt(), 0, 0, ctx.dp(12f).toInt()) })
 
         leaveKey = KeyButton(ctx, "早退").apply { onRelease = { if (phase == Phase.DAY) endDay() } }
-        stage.addView(leaveKey, FrameLayout.LayoutParams(ctx.dp(64f).toInt(), ctx.dp(30f).toInt(), Gravity.TOP or Gravity.CENTER_HORIZONTAL)
-            .apply { topMargin = ctx.dp(74f).toInt() })
+        stage.addView(leaveKey, FrameLayout.LayoutParams(ctx.dp(64f).toInt(), ctx.dp(30f).toInt(), Gravity.TOP or Gravity.START)
+            .apply { setMargins(ctx.dp(12f).toInt(), ctx.dp(142f).toInt(), 0, 0) })
 
+        golden = GoldenBoltView(ctx).apply { onTap = { tapGolden() }; visibility = View.GONE }
+        stage.addView(golden, FrameLayout.LayoutParams(ctx.dp(84f).toInt(), ctx.dp(84f).toInt()))
         buildInsideView(stage)
         root.addView(stage, match())
         buildNight(root)
@@ -223,7 +245,7 @@ class GameController(
             val pd = ctx.dp(10f).toInt()
             setPadding(pd, pd, pd, pd)
         }
-        nightHeader = text(18f, Pal.AMBER, bold = true).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
+        nightHeader = text(16f, Pal.AMBER, bold = true).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
         nightReport = text(12f)
         forecast = text(12f, Pal.CYAN)
         goKey = KeyButton(ctx, "出勤 ▶").apply { accent = Pal.GREEN; onRelease = { startDay() } }
@@ -277,10 +299,19 @@ class GameController(
         hud.raceActive = false
         leaveKey.visibility = View.GONE
         pedal.visibility = View.GONE
+        nitroBtn.visibility = View.GONE
+        golden.visibility = View.GONE
         shiftKey.visibility = View.GONE
+        setEffects(1f)
+        stage.translationX = 0f
+        stage.translationY = 0f
         showInside(false)
         refreshNightHeader()
-        nightReport.text = reportText()
+        // 結果は 1 行ずつ出す (集計の手応え)
+        tallyLines = reportText().split('\n')
+        tallyShown = if (lastResult == null) tallyLines.size else 0
+        tallyTimer = 0.0
+        nightReport.text = tallyLines.take(tallyShown).joinToString("\n")
         val e = state.nextEvent
         forecast.text = "次のシフト (DAY ${state.day}) の予報: ${e.label}" + if (e != DayEvent.NONE) " — ${e.desc}" else ""
         goKey.text = "DAY ${state.day} 出勤 ▶  (${state.perks.shiftSeconds.toInt()} 秒 / ${def.name})"
@@ -289,7 +320,26 @@ class GameController(
     }
 
     private fun refreshNightHeader() {
-        nightHeader.text = "¥ ${fmtMoney(state.money)}   ★ ${state.stars}"
+        nightHeader.text = "¥ ${fmtMoney(state.money)}   ★ ${state.stars}\n" + nextGoalHint()
+        // タブに「今買えるもの」の数をバッジ表示
+        val board = GameBoard.nodes.count { n ->
+            state.canBuyNode(n) && (if (n.currency == Currency.STAR) state.stars >= state.boardCost(n) else state.money >= state.boardCost(n))
+        }
+        val engines = GameRoster.engines.count { state.canUnlock(it) && state.money >= it.price && state.stars >= it.starCost }
+        val tune = UpgradeKind.entries.count { upgradeApplies(def, family, it) && state.tuneAvailable(it) &&
+            state.prog(def.key).level(it) < it.maxLevel && state.money >= state.upgradeCost(def, it) }
+        val counts = mapOf(NightTab.BOARD to board, NightTab.TUNE to tune, NightTab.ENGINES to engines)
+        val labels = NightTab.entries.map { t -> counts[t]?.takeIf { it > 0 }?.let { "${t.label} ($it)" } ?: t.label }
+        if (tabs.items != labels) tabs.items = labels
+    }
+
+    /** 次の目標: まだ買えない一番安いエンジン (無ければボードのノード) まであといくら */
+    private fun nextGoalHint(): String {
+        val eng = GameRoster.engines.filter { state.canUnlock(it) && state.money < it.price }.minByOrNull { it.price }
+        if (eng != null) return "次の目標: ${eng.name} まで あと ¥${fmtMoney(eng.price - state.money)}"
+        val node = GameBoard.nodes.filter { state.canBuyNode(it) && it.currency == Currency.MONEY && state.money < state.boardCost(it) }
+            .minByOrNull { state.boardCost(it) } ?: return ""
+        return "次の目標: ${node.name} まで あと ¥${fmtMoney(state.boardCost(node) - state.money)}"
     }
 
     private fun reportText(): String {
@@ -653,7 +703,44 @@ class GameController(
         hud.maxHp = state.perks.maxHp.toFloat()
         hud.comboCap = state.perks.comboCap.toFloat()
         hud.popup("DAY ${state.day}", Pal.AMBER)
+        nitroBtn.visibility = View.VISIBLE
+        countdownT = 3.0
+        lastEarned = 0.0
+        coinAcc = 0.0
         showInside(false)
+        if (state.stats.days < 2) showTip("pedal", "ペダルを押して、タコメータの光る帯に針を合わせよう", 8.0)
+    }
+
+    /** 初めての状況でだけ出すヒント */
+    private fun showTip(key: String, text: String, seconds: Double) {
+        if (key in state.tipsSeen) return
+        state.tipsSeen += key
+        tipText = text
+        tipTime = seconds
+    }
+
+    private fun haptic(strong: Boolean) {
+        hud.performHapticFeedback(if (strong) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    private fun setEffects(level: Float) {
+        if (level != effectsLevel) { effectsLevel = level; onEffects?.invoke(level) }
+    }
+
+    private fun fireNitro() {
+        val r = run ?: return
+        if (countdownT > 0) return
+        events.clear()
+        if (r.fireNitro(events)) handleEvents() else hud.floatText("ゲージが足りない", Pal.DIM)
+    }
+
+    private fun tapGolden() {
+        val r = run ?: return
+        events.clear()
+        if (r.collectGolden(events)) {
+            hud.spawnCoins(10)
+            handleEvents()
+        }
     }
 
     private fun endDay() {
@@ -706,6 +793,22 @@ class GameController(
         hud.multiplier = state.multiplier
         hud.autoLevel = state.perks.assistLevel
         hud.advance(dt.toFloat())
+        nitroBtn.advance(dt.toFloat())
+        if (golden.visibility == View.VISIBLE) golden.advance(dt.toFloat())
+        if (phase == Phase.DAY) {
+            stage.translationX = hud.shakeX
+            stage.translationY = hud.shakeY
+        }
+        if (phase == Phase.NIGHT && tallyShown < tallyLines.size) {
+            tallyTimer += dt
+            if (tallyTimer > 0.16) {
+                tallyTimer = 0.0
+                tallyShown++
+                nightReport.text = tallyLines.take(tallyShown).joinToString("\n")
+                val line = tallyLines[tallyShown - 1]
+                if (line.startsWith("合計") || line.startsWith("・")) { hud.burstConfetti(70); haptic(true) } else if (line.isNotBlank()) haptic(false)
+            }
+        }
         if (phase == Phase.NIGHT && night.visibility == View.VISIBLE) {
             if (tab == NightTab.BOARD || tab == NightTab.ENGINES) graph.advance(dt.toFloat())
             refreshTimer += dt
@@ -717,6 +820,17 @@ class GameController(
         val r = run ?: return
         val rpm = tel[Tel.RPM].toDouble()
         val pedalThr = pedal.value.toDouble()
+        // 開始前のカウントダウン (空ぶかしはできるが、まだ稼ぎにならない)
+        if (countdownT > 0) {
+            val before = countdownT
+            countdownT -= dt
+            hud.countdown = when { countdownT > 2 -> "3"; countdownT > 1 -> "2"; countdownT > 0 -> "1"; else -> "GO!" }
+            if (before.toInt() != countdownT.toInt() || countdownT <= 0) { haptic(countdownT <= 0); if (countdownT <= 0) hud.shake(6f) }
+            backend.setControls(0f, pedalThr.toFloat(), false, 0f, 0f, true, false, 1, 1f, 0L, true, 0, 0f, 0f)
+            updateDayHud(r)
+            return
+        }
+        if (hud.countdown == "GO!" && r.time > 0.6) hud.countdown = ""
         var thr = if (pedal.pressed || pedalThr > 0.01) pedalThr else (r.autoBlipThrottle(rpm) ?: r.assistThrottle(rpm))
         val cut = r.overheat > 0 || r.blown
         if (cut) thr = 0.0
@@ -726,17 +840,74 @@ class GameController(
         backend.setControls(0f, thr.toFloat(), false, load, 0f, !cut, false, 1, if (slow) 1f / 16 else 1f, 0L, true, 0, 0f, 0f)
         events.clear()
         r.step(dt, sample(), thr, events)
+        handleEvents()
+        // 稼ぎに応じてコインを飛ばす
+        val gained = r.earned - lastEarned
+        lastEarned = r.earned
+        if (gained > 0) coinAcc += gained
+        coinTimer += dt
+        if (coinTimer > 0.3) {
+            coinTimer = 0.0
+            if (coinAcc > 0) hud.spawnCoins((1 + Math.log10(1 + coinAcc)).toInt().coerceIn(1, 6))
+            coinAcc = 0.0
+        }
+        setEffects(if (r.nitroTime > 0 || r.frenzyTime > 0) 2.2f else 1f)
+        updateDayHud(r)
+        if (r.finished) {
+            if (r.blown) handler.postDelayed({ if (run === r) endDay() }, 1500) else endDay()
+        }
+    }
+
+    private fun handleEvents() {
         for (e in events) when (e) {
-            is RunSession.Ev.Text -> hud.floatText(e.text, e.color, e.big)
+            is RunSession.Ev.Text -> hud.floatText(e.text, e.color, e.big).also { if (e.big) { hud.shake(5f); haptic(false) } }
             is RunSession.Ev.Popup -> hud.popup(e.text, e.color)
             is RunSession.Ev.OrderDone -> {
-                hud.floatText("依頼達成 +¥${fmtMoney(e.order.reward)} ★${e.order.stars}", Pal.GREEN, big = true)
-                hud.burstConfetti(60)
+                hud.floatText("依頼達成 +¥${fmtMoney(e.order.reward)}" + if (e.order.stars > 0) " ★${e.order.stars}" else "", Pal.GREEN, big = true)
+                hud.burstConfetti(80)
+                hud.spawnCoins(8)
+                hud.shake(7f)
+                hud.flash(Pal.GREEN)
+                haptic(true)
             }
-            RunSession.Ev.Overheat -> { hud.popup("OVERHEAT!", Pal.RED); hud.flash(Pal.RED) }
-            RunSession.Ev.Blown -> { hud.popup("BLOWN!", Pal.RED); hud.flash(Color.WHITE); hud.burstConfetti(80) }
-            RunSession.Ev.SweetIn -> hud.floatText("SWEET ZONE", Pal.GREEN)
+            RunSession.Ev.Overheat -> { hud.popup("OVERHEAT!", Pal.RED); hud.flash(Pal.RED); hud.shake(12f); haptic(true) }
+            RunSession.Ev.Blown -> { hud.popup("BLOWN!", Pal.RED); hud.flash(Color.WHITE); hud.burstConfetti(80); hud.shake(24f); haptic(true) }
+            RunSession.Ev.SweetIn -> {
+                hud.floatText("IN!", Pal.CYAN)
+                if (state.stats.days < 3) showTip("band", "帯の中にいるとコンボが増える。外れると下がる。帯は動くぞ", 6.0)
+            }
+            is RunSession.Ev.Groove -> {
+                val (txt, col) = when (e.level) { 1 -> "NICE!" to Pal.CYAN; 2 -> "GREAT!!" to Pal.VIOLET; else -> "PERFECT!!!" to Pal.AMBER }
+                hud.popup(txt, col)
+                hud.shake(3f + 3f * e.level)
+                if (e.level >= 3) hud.burstConfetti(120)
+                haptic(e.level >= 2)
+            }
+            RunSession.Ev.NitroReady -> {
+                hud.floatText("NITRO READY", Color.rgb(130, 190, 255), big = true)
+                showTip("nitro", "ニトロが溜まった! 押すと 収入×2 (でも熱も×1.8)", 6.0)
+                haptic(false)
+            }
+            RunSession.Ev.NitroStart -> { hud.popup("NITRO!!", Color.rgb(130, 190, 255)); hud.flash(Color.rgb(90, 150, 255)); hud.shake(14f); haptic(true) }
+            RunSession.Ev.NitroEnd -> hud.floatText("NITRO END", Pal.DIM)
+            RunSession.Ev.GoldenSpawn -> {
+                showTip("golden", "金のボルトが出た! タップで拾おう", 5.0)
+                haptic(false)
+            }
+            is RunSession.Ev.GoldenGot -> { hud.popup(e.text, e.color); hud.flash(Color.rgb(255, 210, 80)); hud.burstConfetti(100); hud.shake(8f); haptic(true) }
+            RunSession.Ev.Knock -> {
+                hud.floatText("ノッキング! 低回転で踏みすぎ", Pal.RED, big = true)
+                hud.shake(6f)
+                showTip("knock", "低回転で全開はノッキング (耐久が減る)。回転を上げてから踏もう", 6.0)
+                haptic(true)
+            }
+            RunSession.Ev.Fever -> { hud.popup("FEVER!!", Pal.VIOLET); hud.burstConfetti(150); hud.shake(10f); haptic(true) }
+            is RunSession.Ev.Milestone -> { hud.floatText("今日 ¥${fmtMoney(e.amount)} 突破!", Pal.AMBER, big = true); hud.burstConfetti(90); haptic(false) }
         }
+        events.clear()
+    }
+
+    private fun updateDayHud(r: RunSession) {
         hud.todayEarned = r.earned
         hud.incomePerSec = r.incomeRate
         hud.combo = r.combo.toFloat()
@@ -746,9 +917,29 @@ class GameController(
         hud.timeLeft = r.timeLeft.toFloat()
         hud.duration = r.duration.toFloat()
         hud.orders = r.orders.map { GameHudView.OrderCard(it.kind.icon + " " + it.title, it.detail, it.progress.toFloat(), it.reward, it.stars, it.done) }
-        if (r.finished) {
-            if (r.blown) handler.postDelayed({ if (run === r) endDay() }, 1500) else endDay()
-        }
+        hud.bandCenter = r.bandCenter.toFloat()
+        hud.bandWidth = r.bandWidth.toFloat()
+        hud.inBand = r.inBand
+        hud.grooveTime = r.grooveTime.toFloat()
+        hud.nitroOn = r.nitroTime > 0
+        hud.frenzyOn = r.frenzyTime > 0
+        hud.knocking = r.knocking
+        hud.fever = r.combo >= state.perks.comboCap - 1e-6
+        nitroBtn.level = r.nitro.toFloat()
+        nitroBtn.active = if (r.nitroTime > 0) (r.nitroTime / state.perks.nitroSeconds).toFloat() else 0f
+        // 金のボルト
+        if (r.goldenLife > 0) {
+            if (golden.visibility != View.VISIBLE) {
+                golden.visibility = View.VISIBLE
+                golden.translationX = (stage.width * r.goldenX).toFloat() - golden.width / 2f
+                golden.translationY = (stage.height * r.goldenY).toFloat() - golden.height / 2f
+            }
+            golden.life = (r.goldenLife / 5.0).toFloat()
+        } else golden.visibility = View.GONE
+        // ヒント
+        if (tipTime > 0) tipTime -= 0.033
+        hud.tip = if (tipTime > 0) tipText else ""
+        if (state.stats.days < 1 && r.time > 15.0) showTip("orders", "右の依頼をこなすと ¥ と ★。★ は夜の工房で使う", 6.0)
     }
 
     // ================================================================ 夜のゼロヨン

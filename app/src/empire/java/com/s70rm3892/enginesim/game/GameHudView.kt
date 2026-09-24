@@ -62,6 +62,19 @@ class GameHudView(context: Context) : View(context) {
     /** 依頼カード (タイトル, 詳細, 進捗 0..1, 報酬 ¥, ★, 完了) */
     data class OrderCard(val title: String, val detail: String, val progress: Float, val reward: Double, val stars: Int, val done: Boolean)
     var orders: List<OrderCard> = emptyList()
+    // ターゲット帯・ニトロ・状態 (シフト中)
+    var bandCenter = 0f
+    var bandWidth = 0f
+    var inBand = false
+    var grooveTime = 0f
+    var nitroOn = false
+    var frenzyOn = false
+    var knocking = false
+    var fever = false
+    /** 画面下のヒント (初日のチュートリアルなど)。空なら非表示 */
+    var tip = ""
+    /** 中央の大きなカウントダウン ("3", "2", "1", "GO!") */
+    var countdown = ""
     /** 内部表示中: 計器を右上の 1 行にまとめてエンジンを見やすくする */
     var compact = false
 
@@ -86,6 +99,17 @@ class GameHudView(context: Context) : View(context) {
     private var flashColor = Color.WHITE
     private var shownMoney = 0.0
     private var time = 0f
+
+    // コイン: エンジン (画面中央) から所持金カウンタへ飛ぶ
+    private class Coin(val x0: Float, val y0: Float, val cx: Float, val cy: Float, var t: Float, val dur: Float)
+    private val coins = ArrayList<Coin>()
+    private var counterPop = 0f
+    // 画面の揺れ (コントローラがステージ全体を動かすのに使う)
+    private var shakeAmp = 0f
+    var shakeX = 0f
+        private set
+    var shakeY = 0f
+        private set
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD) }
@@ -112,6 +136,23 @@ class GameHudView(context: Context) : View(context) {
         val fy = y ?: (height * (0.42f + rnd.nextFloat() * 0.12f))
         floats += FloatText(fx, fy, text, color, if (big) dp(30f) else dp(17f), if (big) 1.6f else 1.1f, if (big) 1.6f else 1.1f)
         if (floats.size > 40) floats.removeAt(0)
+    }
+
+    /** コインを n 枚飛ばす (稼ぎの手応え) */
+    fun spawnCoins(n: Int) {
+        val w = width - rightInset
+        repeat(n.coerceAtMost(12)) {
+            val x0 = w * (0.40f + rnd.nextFloat() * 0.2f)
+            val y0 = height * (0.45f + rnd.nextFloat() * 0.15f)
+            coins += Coin(x0, y0, x0 - dp(60f) + rnd.nextFloat() * dp(120f), y0 - dp(120f) - rnd.nextFloat() * dp(80f), -it * 0.05f,
+                0.55f + rnd.nextFloat() * 0.2f)
+        }
+        if (coins.size > 80) coins.subList(0, coins.size - 80).clear()
+    }
+
+    /** 画面を揺らす (強さ dp) */
+    fun shake(amountDp: Float) {
+        shakeAmp = max(shakeAmp, dp(amountDp))
     }
 
     fun popup(text: String, color: Int) {
@@ -157,6 +198,19 @@ class GameHudView(context: Context) : View(context) {
         confetti.removeAll { it.life <= 0 || it.y > height + 50 }
         popupLife = max(0f, popupLife - dt)
         flashLife = max(0f, flashLife - dt)
+        // コイン
+        val it = coins.iterator()
+        while (it.hasNext()) {
+            val cn = it.next()
+            cn.t += dt
+            if (cn.t >= cn.dur) { it.remove(); counterPop = 1f }
+        }
+        counterPop = max(0f, counterPop - dt * 5f)
+        // 揺れ (減衰するランダム変位)
+        shakeAmp *= Math.exp(-dt * 9.0).toFloat()
+        if (shakeAmp < 0.3f) shakeAmp = 0f
+        shakeX = (rnd.nextFloat() * 2 - 1) * shakeAmp
+        shakeY = (rnd.nextFloat() * 2 - 1) * shakeAmp
         invalidate()
     }
 
@@ -172,6 +226,25 @@ class GameHudView(context: Context) : View(context) {
         }
         if (dayActive && !raceActive) { drawDayTop(c, w); drawOrders(c, w, h) }
         if (raceActive) drawRace(c, w, h) else if (!showGauges) Unit else if (compact) drawCompact(c, w) else drawGauges(c, w, h)
+        if (dayActive && !raceActive) drawDayEffects(c, w, h)
+        // コイン
+        val tx = dp(90f)
+        val ty = dp(30f)
+        for (cn in coins) {
+            if (cn.t < 0) continue
+            val u = (cn.t / cn.dur).coerceIn(0f, 1f)
+            val e = u * u
+            val a1 = 1 - e
+            // 二次ベジェ: 出発点 → 制御点 → カウンタ
+            val x = a1 * a1 * cn.x0 + 2 * a1 * e * cn.cx + e * e * tx
+            val y = a1 * a1 * cn.y0 + 2 * a1 * e * cn.cy + e * e * ty
+            val r = dp(7f) * (1.2f - 0.5f * u)
+            p.style = Paint.Style.FILL
+            p.color = Color.rgb(255, 200, 60)
+            c.drawCircle(x, y, r, p)
+            p.color = Color.rgb(255, 240, 170)
+            c.drawCircle(x - r * 0.3f, y - r * 0.3f, r * 0.35f, p)
+        }
         // 浮遊テキスト
         tp.textAlign = Paint.Align.CENTER
         for (f in floats) {
@@ -235,8 +308,12 @@ class GameHudView(context: Context) : View(context) {
         val x = dp(14f)
         tp.textAlign = Paint.Align.LEFT
         tp.textSize = dp(34f)
-        tp.color = Pal.AMBER
+        tp.color = if (frenzyOn && (time * 8).toInt() % 2 == 0) Color.WHITE else Pal.AMBER
+        val sc = 1f + 0.18f * counterPop
+        c.save()
+        c.scale(sc, sc, x, dp(30f))
         c.drawText((if (dayActive) "今日 ¥ " else "¥ ") + fmtMoney(if (dayActive) todayEarned else shownMoney), x, dp(42f), tp)
+        c.restore()
         tp.textSize = dp(15f)
         tp.color = if (incomePerSec >= 0) Pal.GREEN else Pal.RED
         val inc = (if (incomePerSec >= 0) "+" else "") + fmtMoney(incomePerSec) + " /s"
@@ -253,6 +330,64 @@ class GameHudView(context: Context) : View(context) {
         val line = if (isTurbine) "%.0f kW  推力 %.1f kN  EGT".format(powerKw, thrustKn)
         else "%.0f kW  η %.0f%%%s".format(powerKw, efficiency * 100, if (boostBar > 0.05f) "  +%.2f bar".format(boostBar) else "")
         c.drawText(line, w - dp(12f), dp(46f), tp)
+    }
+
+    /** シフト中の演出: ニトロの集中線、フィーバーの縁取り、ヒント、カウントダウン */
+    private fun drawDayEffects(c: Canvas, w: Float, h: Float) {
+        val cx = w / 2
+        val cy = h * 0.52f
+        if (nitroOn || frenzyOn) {
+            // 集中線
+            val n = 28
+            sp.strokeWidth = dp(2f)
+            for (i in 0 until n) {
+                val ang = (i * 2 * Math.PI / n + time * 0.7).toFloat()
+                val ph = ((time * 3.2f + i * 0.37f) % 1f)
+                val r0 = max(w, h) * (0.35f + 0.5f * ph)
+                val r1 = r0 + max(w, h) * 0.18f
+                sp.color = if (nitroOn) Color.argb((140 * (1 - ph)).toInt(), 110, 170, 255) else Color.argb((140 * (1 - ph)).toInt(), 255, 210, 80)
+                c.drawLine(cx + r0 * cos(ang), cy + r0 * sin(ang), cx + r1 * cos(ang), cy + r1 * sin(ang), sp)
+            }
+            tp.textAlign = Paint.Align.CENTER
+            tp.textSize = dp(22f)
+            tp.color = if (nitroOn) Color.rgb(130, 190, 255) else Color.rgb(255, 210, 80)
+            c.drawText(if (nitroOn && frenzyOn) "NITRO × FRENZY" else if (nitroOn) "NITRO ×2" else "FRENZY ×4", cx, h * 0.24f, tp)
+        }
+        if (fever) {
+            // フィーバー: 虹色に脈動する縁取り
+            val hue = (time * 120f) % 360f
+            sp.strokeWidth = dp(6f) + dp(3f) * sin(time * 8f)
+            sp.color = Color.HSVToColor(200, floatArrayOf(hue, 0.8f, 1f))
+            rect.set(sp.strokeWidth / 2, sp.strokeWidth / 2, w - sp.strokeWidth / 2, h - sp.strokeWidth / 2)
+            c.drawRoundRect(rect, dp(12f), dp(12f), sp)
+            tp.textAlign = Paint.Align.LEFT
+            tp.textSize = dp(14f)
+            tp.color = Color.HSVToColor(floatArrayOf(hue, 0.6f, 1f))
+            c.drawText("FEVER!", dp(14f), dp(94f), tp)
+        }
+        if (tip.isNotEmpty()) {
+            tp.textAlign = Paint.Align.CENTER
+            tp.textSize = dp(14f)
+            val tw = tp.measureText(tip) + dp(24f)
+            rect.set(cx - tw / 2, h - dp(52f), cx + tw / 2, h - dp(22f))
+            p.style = Paint.Style.FILL
+            p.color = Color.argb(210, 20, 24, 30)
+            c.drawRoundRect(rect, dp(15f), dp(15f), p)
+            p.style = Paint.Style.STROKE
+            p.strokeWidth = dp(1.5f)
+            p.color = Color.argb((180 + 70 * sin(time * 5f)).toInt().coerceIn(0, 255), 255, 176, 32)
+            c.drawRoundRect(rect, dp(15f), dp(15f), p)
+            tp.color = Pal.TEXT
+            c.drawText(tip, cx, h - dp(32f), tp)
+        }
+        if (countdown.isNotEmpty()) {
+            tp.textAlign = Paint.Align.CENTER
+            tp.textSize = dp(90f)
+            tp.color = Color.argb(160, 0, 0, 0)
+            c.drawText(countdown, cx + dp(4f), h * 0.55f + dp(4f), tp)
+            tp.color = if (countdown == "GO!") Pal.GREEN else Pal.AMBER
+            c.drawText(countdown, cx, h * 0.55f, tp)
+        }
     }
 
     /** 上部中央: タイマーと日付・イベント */
@@ -344,18 +479,42 @@ class GameHudView(context: Context) : View(context) {
         sp.strokeWidth = dp(10f)
         sp.color = Color.argb(160, 30, 34, 40)
         c.drawArc(rect, 135f, 270f, false, sp)
-        sp.color = Color.argb(200, 80, 210, 120)
-        c.drawArc(rect, ang(redline * sweetLo), ang(redline * sweetHi) - ang(redline * sweetLo), false, sp)
+        if (dayActive && bandWidth > 0f) {
+            // ターゲット帯 (動く)。針が入っていると光る
+            val lo = redline * (bandCenter - bandWidth / 2)
+            val hi = redline * (bandCenter + bandWidth / 2)
+            val glow = if (inBand) 0.6f + 0.4f * sin(time * 12f) else 0.35f
+            sp.strokeWidth = dp(16f)
+            sp.color = Color.argb((glow * 120).toInt(), 64, 220, 255)
+            c.drawArc(rect, ang(lo), ang(hi) - ang(lo), false, sp)
+            sp.strokeWidth = dp(10f)
+            sp.color = if (inBand) Color.rgb(120, 240, 255) else Color.rgb(40, 160, 200)
+            c.drawArc(rect, ang(lo), ang(hi) - ang(lo), false, sp)
+        } else {
+            sp.color = Color.argb(200, 80, 210, 120)
+            c.drawArc(rect, ang(redline * sweetLo), ang(redline * sweetHi) - ang(redline * sweetLo), false, sp)
+        }
         sp.color = Color.argb(200, 235, 64, 52)
         c.drawArc(rect, ang(redline), ang(maxRpm) - ang(redline), false, sp)
-        val inSweet = rpm >= redline * sweetLo && rpm <= redline * sweetHi
+        val inSweet = if (dayActive) inBand else rpm >= redline * sweetLo && rpm <= redline * sweetHi
         sp.strokeWidth = dp(4f)
         sp.color = if (limiter) Pal.RED else if (inSweet) Pal.GREEN else Pal.AMBER
         c.drawArc(RectF(rect).apply { inset(dp(12f), dp(12f)) }, 135f, ang(rpm) - 135f, false, sp)
         val a = Math.toRadians(ang(rpm).toDouble())
+        if (inSweet) {
+            sp.strokeWidth = dp(9f)
+            sp.color = Color.argb(90, 120, 240, 255)
+            c.drawLine(cx, cy, cx + (r - dp(6f)) * cos(a).toFloat(), cy + (r - dp(6f)) * sin(a).toFloat(), sp)
+        }
         sp.strokeWidth = dp(3f)
         sp.color = Color.WHITE
         c.drawLine(cx, cy, cx + (r - dp(6f)) * cos(a).toFloat(), cy + (r - dp(6f)) * sin(a).toFloat(), sp)
+        if (knocking && (time * 10).toInt() % 2 == 0) {
+            tp.textAlign = Paint.Align.CENTER
+            tp.color = Pal.RED
+            tp.textSize = r * 0.22f
+            c.drawText("KNOCK!", cx, cy - r * 0.45f, tp)
+        }
         tp.textAlign = Paint.Align.CENTER
         tp.textSize = r * 0.32f
         tp.color = Pal.TEXT

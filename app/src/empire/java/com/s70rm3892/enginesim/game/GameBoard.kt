@@ -48,16 +48,19 @@ object GameBoard {
         m("fuelDeal", "燃料契約", "燃料代 −8% / Lv", 1, 1, 6, 700.0, 1.9, "grid"),
         m("comboCap", "コンボ上限", "コンボ上限 +0.5 / Lv", 1, 1 + 1, 4, 1200.0, 2.6, "grid"),
         m("rhythm", "リズム感", "コンボの溜まる速さ +30% / Lv", 1, 3, 3, 2700.0, 2.4, "comboCap"),
-        s("sweetWide", "ピーク需要", "スイートゾーンを上下に 3% ずつ広げる / Lv", 1, 4, 3, 4.0, 1.8, "rhythm", "fuelDeal"),
+        m("research", "研究開発", "全収入 +8% / Lv (上限なし・エンドコンテンツ)", 1, 5, 999, 2.0e6, 1.35, "sweetWide"),
+        s("sweetWide", "ピーク需要", "ターゲット帯を 3% ずつ広げる / Lv", 1, 4, 3, 4.0, 1.8, "rhythm", "fuelDeal"),
         // 整備: 熱と耐久
         m("radiator", "大型ラジエーター", "発熱 −12% / Lv", 2, 0, 6, 480.0, 1.9),
         m("block", "強化ブロック", "耐久 +25 / Lv", 2, 1, 5, 720.0, 2.0, "radiator"),
         s("antilag", "アンチラグ", "アフターファイアのボーナス ×1.6 / Lv", 2, 1 + 1, 3, 3.0, 1.7, "radiator"),
+        m("nitroTank", "ニトロタンク", "ニトロの持続 +2 秒 / Lv、溜まる速さ +20% / Lv", 2, 4, 3, 3000.0, 2.6, "mechanic"),
         m("mechanic", "専属メカニック", "オーバーヒートの停止時間 −1 秒 / Lv、耐久の減り −15% / Lv", 2, 3, 3, 4500.0, 2.8, "block"),
         // 自動化
-        m("assistant", "アシスタント", "ペダルを離している間、スイートゾーンを保つ (強さ 18% / Lv)", 3, 0, 5, 1000.0, 2.3),
+        m("assistant", "アシスタント", "ペダルを離している間、ターゲット帯を追う (開度の上限 18% / Lv)", 3, 0, 5, 1000.0, 2.3),
         s("autoShift", "オートブリップ", "ブリッピング依頼をアシスタントがこなす", 3, 1, 1, 6.0, 1.0, "assistant"),
         m("telemetry", "計測器", "依頼の達成が 20% 早く進む / Lv", 3, 2, 3, 6000.0, 3.0, "assistant"),
+        s("luckyBolt", "ラッキーボルト", "金のボルトの出現頻度 +30% / Lv", 3, 3, 3, 3.0, 1.8, "assistant"),
         // 工房: 系統とツールの解放
         s("goggles", "X線ゴーグル", "「内部を見る」(透視・断面・温度・応力・スロー) が使える", 4, 0, 1, 1.0, 1.0),
         s("steamWorks", "蒸気工房", "エンジンツリー: 外燃系統を開く", 4, 1, 1, 3.0, 1.0, "goggles"),
@@ -83,7 +86,7 @@ class Perks(private val g: GameState) {
     val orderSlots get() = 2 + lv("orderBoard")
     val extraStarChance get() = 0.35 * lv("reputation")
     val vip get() = lv("vip") > 0
-    val powerPriceMul get() = 1.0 + 0.12 * lv("grid")
+    val powerPriceMul get() = (1.0 + 0.12 * lv("grid")) * (1.0 + 0.08 * lv("research"))
     val fuelMul get() = 0.92.pow(lv("fuelDeal").toDouble())
     val comboCap get() = GameRules.COMBO_MAX + 0.5 * lv("comboCap")
     val comboRate get() = 1.0 + 0.3 * lv("rhythm")
@@ -98,4 +101,7 @@ class Perks(private val g: GameState) {
     val orderSpeed get() = 1.0 + 0.2 * lv("telemetry")
     val internalView get() = lv("goggles") > 0
     val dragRace get() = lv("vehicleBay") > 0
+    val nitroSeconds get() = 6.0 + 2.0 * lv("nitroTank")
+    val nitroRate get() = 1.0 + 0.2 * lv("nitroTank")
+    val goldenRate get() = 1.0 + 0.3 * lv("luckyBolt")
 }
