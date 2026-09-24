@@ -193,7 +193,46 @@ void EngineKinematics::prepare(EngineSpec& spec) {
         // 点火間隔の分散が最小 (= 最も等間隔) になる割り当てを選ぶ。18 気筒超は交互割り当て。
         const size_t n = comb.size();
         std::vector<double> angles(n);
-        if (n <= 18) {
+        const bool radial = std::any_of(spec.pistons.begin(), spec.pistons.end(),
+                                        [](const PistonDef& p) { return p.rod == RodType::Articulated; });
+        auto cost = [&](std::vector<double> a) {
+            std::sort(a.begin(), a.end());
+            double ideal = 720.0 / a.size(), c = 0;
+            for (size_t k = 0; k < a.size(); ++k) {
+                double iv = (k + 1 < a.size() ? a[k + 1] : a[0] + 720.0) - a[k];
+                c += (iv - ideal) * (iv - ideal);
+            }
+            return c;
+        };
+        if (radial) {
+            // 星型: 各列 (= クランクスロー) の中で TDC 順に 1 つ飛ばし点火 (1-3-5-..-2-4-..)、
+            // 列どうしの位相 (0/360) だけを探索して全体を等間隔に近づける
+            std::vector<std::vector<int>> rows;
+            std::vector<int> rowThrow;
+            for (int c : comb) {
+                int t = spec.pistons[spec.chambers[c].pistons[0]].throwIdx;
+                auto it = std::find(rowThrow.begin(), rowThrow.end(), t);
+                if (it == rowThrow.end()) { rowThrow.push_back(t); rows.push_back({c}); }
+                else rows[it - rowThrow.begin()].push_back(c);
+            }
+            std::vector<double> base(spec.chambers.size(), 0.0);
+            for (auto& row : rows) {
+                std::stable_sort(row.begin(), row.end(), [&](int a, int b) { return tdc[a] < tdc[b] - 1e-3; });
+                for (size_t k = 0; k < row.size(); ++k) base[row[k]] = tdc[row[k]] + ((k % 2) ? 360.0 : 0.0);
+            }
+            uint32_t best = 0;
+            double bestCost = 1e30;
+            for (uint32_t mask = 0; mask < (1u << (rows.size() - 1)); ++mask) {
+                std::vector<double> a;
+                for (size_t r = 0; r < rows.size(); ++r)
+                    for (int c : rows[r]) a.push_back(wrapPos(base[c] + ((r > 0 && ((mask >> (r - 1)) & 1u)) ? 360.0 : 0.0), 720.0));
+                double cc = cost(a);
+                if (cc < bestCost - 1e-6) { bestCost = cc; best = mask; }
+            }
+            for (size_t r = 0; r < rows.size(); ++r)
+                for (int c : rows[r])
+                    spec.chambers[c].firingDeg = static_cast<float>(wrapPos(base[c] + ((r > 0 && ((best >> (r - 1)) & 1u)) ? 360.0 : 0.0), 720.0));
+        } else if (n <= 18) {
             const double ideal = 720.0 / n;
             double bestCost = 1e30;
             uint32_t bestMask = 0;
