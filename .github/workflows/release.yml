@@ -1,0 +1,59 @@
+name: Release
+
+# v* タグを push すると、シミュレータとゲームの 2 つの APK をビルドして GitHub Release に公開する。
+# 署名: リポジトリ Secrets (SIGNING_KEYSTORE_BASE64 / SIGNING_STORE_PASSWORD / SIGNING_KEY_ALIAS /
+# SIGNING_KEY_PASSWORD) があればその鍵、無ければ Gradle のデバッグ鍵。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Signing key (optional)
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "SIGNING_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "SIGNED_WITH=release key" >> "$GITHUB_ENV"
+          else
+            echo "SIGNED_WITH=debug key" >> "$GITHUB_ENV"
+          fi
+      - name: Unit tests
+        run: ./gradlew --no-daemon testSimulatorDebugUnitTest testEmpireDebugUnitTest
+      - name: Build APKs
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon assembleSimulatorRelease assembleEmpireRelease
+      - name: Collect
+        run: |
+          mkdir dist
+          cp app/build/outputs/apk/simulator/release/app-simulator-release.apk "dist/EngineSimulator-${GITHUB_REF_NAME}.apk"
+          cp app/build/outputs/apk/empire/release/app-empire-release.apk "dist/EngineEmpire-${GITHUB_REF_NAME}.apk"
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt)
+          cp docs/RELEASE_NOTES.md dist/notes.md
+          printf '\n---\nSigned with: %s\n' "$SIGNED_WITH" >> dist/notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body_path: dist/notes.md
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS.txt

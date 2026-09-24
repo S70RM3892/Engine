@@ -13,7 +13,7 @@
 - **n 気筒設計**: 直列/V/水平対向/星型/対向ピストン/ロータリーを任意の気筒数で生成 (等間隔点火のクランク配置を自動設計)
 - **駆動モード**: 台上 (ダイナモ) / MT / **AT (トルコン + ロックアップ + キックダウン)**、アクセルペダルボタン
 - **描画**: Vulkan (既定) / OpenGL ES 3.0 (自動フォールバック)
-- **ENGINE EMPIRE**: 同じ物理エンジンで動く放置・育成ゲーム (ランチャーに別アイコン)。実出力 − 燃料代が収入になり、エンジンごとの回転域・効率・過給特性がそのまま攻略要素になる
+- **ENGINE EMPIRE**: 同じ物理エンジンで動く放置・育成ゲーム (**別アプリ** `com.s70rm3892.engineempire`)。実出力 − 燃料代が収入になり、エンジンごとの回転域・効率・過給特性がそのまま攻略要素になる
 
 ![ENGINE EMPIRE の HUD (Robolectric 描画)](docs/images/game_hud.png)
 
@@ -21,9 +21,20 @@
 
 ```sh
 # Android SDK (platform 36, build-tools 36, NDK 29.0.14206865, CMake 3.31.6) が必要
-./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease      # デバッグ鍵で署名したリリースビルド
+# 同じソースから 2 つのアプリ (productFlavors) をビルドする
+./gradlew assembleSimulatorRelease   # 3D Engine Simulator  (com.s70rm3892.enginesim)
+./gradlew assembleEmpireRelease      # ENGINE EMPIRE        (com.s70rm3892.engineempire)
+# → app/build/outputs/apk/{simulator,empire}/release/*.apk
 ```
+
+| ソースセット | 内容 |
+|---|---|
+| `app/src/main` | 共通: ネイティブコア (シミュレーション/音響/Vulkan・GLES 描画)、JNI、ビューポート、ウィジェット、エンジン JSON |
+| `app/src/simulator` | シミュレータ: 操作コンソール、テレメトリ、n 気筒設計 |
+| `app/src/empire` | ゲーム: ENGINE EMPIRE (アイコン・アプリ名も別) |
+
+リリース: `v*` タグを push すると `.github/workflows/release.yml` が両 APK をビルドして GitHub Release に添付する。
+リポジトリ Secrets `SIGNING_KEYSTORE_BASE64` / `SIGNING_STORE_PASSWORD` / `SIGNING_KEY_ALIAS` / `SIGNING_KEY_PASSWORD` を設定するとその鍵で署名する (未設定時はデバッグ鍵)。
 
 GitHub Actions (`.github/workflows/android.yml`) でも APK が成果物として生成される。
 
@@ -44,7 +55,7 @@ cmake -S tests -B tests/build -G Ninja && cmake --build tests/build && ./tests/b
 ./tests/build/render_shots <outdir> i4_20t --vk --fx 0 0     # ゲーム演出 (炎・火花)
 
 # コンソール UI のレイアウト (Robolectric, ネイティブ不要) → app/build/screenshots/
-./gradlew testDebugUnitTest
+./gradlew testSimulatorDebugUnitTest testEmpireDebugUnitTest
 ```
 
 ## 構成
@@ -57,6 +68,7 @@ cmake -S tests -B tests/build -G Ninja && cmake --build tests/build && ./tests/b
 | `app/src/main/cpp/render` | 手続き的メッシュ、シーン、PBR/X線/断面/ヒートマップ描画、カメラ |
 | `app/src/main/cpp/jni` | Kotlin との境界 |
 | `app/src/main/cpp/render/vk` | Vulkan バックエンドと GLSL 4.50 シェーダ |
-| `app/src/main/java/.../` | 操作コンソール UI、テレメトリ、Vulkan/GL ビュー、n 気筒設計 |
-| `app/src/main/java/.../game` | ENGINE EMPIRE (モデル・ゲームループ・HUD) |
+| `app/src/main/java/.../` | 共通: JNI、Vulkan/GL ビュー、ウィジェット、カタログ |
+| `app/src/simulator/java/.../` | 操作コンソール UI、テレメトリ、n 気筒設計 |
+| `app/src/empire/java/.../game` | ENGINE EMPIRE (モデル・ゲームループ・HUD) |
 | `tests/` | ホストテスト、ヘッドレス描画 |

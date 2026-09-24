@@ -104,9 +104,6 @@ class GameController(
     private var tab = Tab.TUNE
     private val rows = ArrayList<Pair<ShopRow, () -> Unit>>()   // 行と、その表示更新処理
 
-    /** シミュレータへ戻る (GameActivity が設定) */
-    var onOpenSimulator: (() -> Unit)? = null
-
     // ---------------------------------------------------------------- UI 構築
 
     fun buildInto(root: FrameLayout, viewportHost: FrameLayout) {
@@ -145,10 +142,8 @@ class GameController(
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         }
-        val back = KeyButton(ctx, "シミュレータへ").apply { onRelease = { onOpenSimulator?.invoke() } }
         val top = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(header, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(back, LinearLayout.LayoutParams(ctx.dp(110f).toInt(), ctx.dp(32f).toInt()))
         panel.addView(top)
         tabs = SegmentedSelector(ctx, Tab.entries.map { it.label }).apply {
             onSelect = { i -> tab = Tab.entries[i]; rebuildList() }

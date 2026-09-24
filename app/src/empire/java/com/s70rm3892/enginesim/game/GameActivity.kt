@@ -13,7 +13,7 @@ import com.s70rm3892.enginesim.Viewport
 import org.json.JSONObject
 
 /**
- * インクリメンタルゲーム「ENGINE EMPIRE」。シミュレータとは別アイコン・別タスクで起動する。
+ * インクリメンタルゲーム「ENGINE EMPIRE」(empire フレーバー = シミュレータとは別アプリ)。
  * 3D ビュー (Vulkan/GLES) は全面に置き、ゲーム演出 (炎・火花・閃光・カメラシェイク・自動周回) を有効にする。
  */
 class GameActivity : Activity() {
@@ -34,11 +34,6 @@ class GameActivity : Activity() {
         }
         game = GameController(this, NativeBridge, source, GameController.prefsStore(this))
         game.buildInto(root, viewportHost)
-        game.onOpenSimulator = {
-            // ランチャーから直接起動した場合はシミュレータを開いてから閉じる
-            if (isTaskRoot) startActivity(android.content.Intent(this, com.s70rm3892.enginesim.MainActivity::class.java))
-            finish()
-        }
         setContentView(root)
         hideSystemBars()
     }

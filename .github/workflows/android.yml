@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main, "claude/**"]
+    tags-ignore: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -35,15 +36,15 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" "cmake;3.31.6"
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests (Robolectric screenshots)
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew --no-daemon testSimulatorDebugUnitTest testEmpireDebugUnitTest
       - name: Assemble
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        run: ./gradlew --no-daemon assembleSimulatorRelease assembleEmpireRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: engine-simulator-apk
+          name: apks
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/simulator/release/app-simulator-release.apk
+            app/build/outputs/apk/empire/release/app-empire-release.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:

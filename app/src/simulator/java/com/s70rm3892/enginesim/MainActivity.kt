@@ -39,14 +39,12 @@ class MainActivity : Activity() {
 
         console = ConsoleUIController(this, telemetry, EngineCatalog(this))
         console.buildInto(consoleHost)
-        console.onOpenGame = { startActivity(android.content.Intent(this, com.s70rm3892.enginesim.game.GameActivity::class.java)) }
         console.loadDefault()
         hideSystemBars()
     }
 
     override fun onResume() {
         super.onResume()
-        // ゲーム演出はシミュレータでは切る
         NativeBridge.setEffects(0f)
         NativeBridge.setAutoOrbit(0f)
         viewport.onResume()
